@@ -1,0 +1,207 @@
+🔧 Frontend Integration Prompt (Auth Dashboard)
+📌 Общая цель
+
+Разработать frontend-приложение (Dashboard) для управления пользователями и авторизацией, интегрированное с backend Auth сервисом (Go + Gin).
+
+Приложение должно поддерживать:
+
+Авторизацию (login/logout)
+Регистрацию пользователей
+Обновление токена (refresh)
+CRUD пользователей (если доступны эндпоинты)
+Просмотр и редактирование профиля
+Загрузку фото пользователя
+Управление сессией через JWT
+🧩 API Contract (ожидаемый backend)
+
+Frontend должен работать с JWT:
+
+Authentication
+POST /auth/login
+
+Request:
+
+{
+  "phone": "string",
+  "password": "string"
+}
+
+Response:
+
+{
+  "access_token": "string",
+  "refresh_token": "string",
+  "message": "Success authorization"
+}
+POST /auth/register
+
+Multipart/Form-Data:
+
+first_name
+last_name
+middle_name
+phone
+password
+photo (file, optional)
+
+Response:
+
+{
+  "id": "uuid",
+  "first_name": "string",
+  "last_name": "string",
+  "phone": "string",
+  "photo": "string"
+}
+POST /auth/refresh
+
+Request:
+
+{
+  "refresh_token": "string"
+}
+
+Response:
+
+{
+  "access_token": "string",
+  "expires_at": "timestamp",
+  "user": {}
+}
+POST /auth/logout
+
+Headers:
+
+Authorization: Bearer <access_token>
+
+Request:
+
+{
+  "token": "string"
+}
+👤 User Entity
+
+Frontend должен учитывать модель:
+
+type User = {
+  id: string
+  first_name: string
+  last_name: string
+  middle_name?: string
+  phone: string
+  role: "admin" | "user"
+  photo?: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+🧠 Auth Flow (важно)
+1. Login Flow
+Отправка phone + password
+Сохранение:
+access_token (memory / localStorage)
+refresh_token (secure storage)
+Установка Authorization header
+2. Token Usage
+
+Каждый запрос:
+
+Authorization: Bearer <access_token>
+3. Auto Refresh
+
+При 401:
+
+вызвать /auth/refresh
+обновить access_token
+повторить запрос
+4. Logout
+очистить токены
+вызвать /auth/logout
+редирект на login page
+🖥 UI Pages / Modules
+1. Login Page
+phone input
+password input
+submit button
+error handling
+2. Register Page
+form:
+first_name
+last_name
+middle_name
+phone
+password
+photo upload
+3. Dashboard
+
+После авторизации:
+
+Sections:
+Profile card
+User list (если admin)
+Create user
+Edit user
+Delete user
+Upload/change avatar
+4. Profile Page
+отображение данных пользователя
+редактирование
+смена фото
+🔐 Authorization Rules
+
+Frontend должен учитывать role:
+
+admin:
+доступ к списку пользователей
+создание / удаление / редактирование
+user:
+доступ только к своему профилю
+📦 State Management
+
+Рекомендуется:
+
+React Query / TanStack Query (или аналог)
+Zustand / Redux Toolkit (для auth state)
+
+State должен хранить:
+
+{
+  user: User | null
+  accessToken: string | null
+  refreshToken: string | null
+  isAuthenticated: boolean
+}
+🌐 HTTP Client
+
+Рекомендуется:
+
+Axios instance с interceptors
+
+Обязательная логика:
+
+автоматическое добавление Authorization header
+interceptor для refresh token
+retry failed requests
+📁 File Upload
+
+Для photo:
+
+использовать FormData
+отправка multipart request
+preview перед загрузкой (optional)
+⚠️ Edge Cases
+
+Frontend должен обрабатывать:
+
+invalid credentials
+expired token
+blocked account (is_active = false)
+network errors
+token blacklist (logout)
+✅ Acceptance Criteria
+Login работает с JWT
+Refresh token обновляет access token автоматически
+Dashboard защищён маршрутизацией
+Есть CRUD UI (если API доступен)
+Фото загружается и отображается
+Role-based UI rendering работает корректно

@@ -1,0 +1,50 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Build output
+dist/
+build/
+bin/
+
+# Go specific
+vendor/
+go.work
+go.work.sum
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test and coverage
+coverage.out
+coverage.html
+*.cover
+*.cov
+
+# Git
+.git/
+.gitignore
+
+# Logs
+*.log
+logs/
+tmp/
+temp/
+
+# Environment files (should be passed via build args or secrets)
+.env
+.env.local
+.env.*.local
