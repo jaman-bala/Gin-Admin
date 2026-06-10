@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -60,7 +61,7 @@ type MinioConfig struct {
 }
 
 func LoadConfig() (*Config, error) {
-	_ = godotenv.Load() // Игнорируем ошибку, если .env файл не найден
+	_ = godotenv.Load()
 
 	config := &Config{
 		Server: ServerConfig{
@@ -72,7 +73,7 @@ func LoadConfig() (*Config, error) {
 			Host:            getEnv("DB_HOST", ""),
 			Port:            getEnv("DB_PORT", "5432"),
 			User:            getEnv("DB_USER", ""),
-			Password:        getEnv("DB_PASSWORD", ""),
+			Password:        readSecret("DB_PASSWORD", ""),
 			Name:            getEnv("DB_NAME", ""),
 			SSLMode:         getEnv("DB_SSLMODE", "disable"),
 			MaxOpenConns:    getEnvAsInt("DB_MAX_OPEN_CONNS", 25),
@@ -80,14 +81,14 @@ func LoadConfig() (*Config, error) {
 			ConnMaxLifetime: time.Hour * time.Duration(getEnvAsInt("DB_CONN_MAX_LIFETIME_HOURS", 1)),
 		},
 		JWT: JWTConfig{
-			Secret:        getEnv("SECRET_KEY", ""),
+			Secret:        readSecret("SECRET_KEY", ""),
 			Expiry:        time.Hour * time.Duration(getEnvAsInt("JWT_EXPIRY_HOURS", 24)),
 			RefreshExpiry: time.Hour * time.Duration(getEnvAsInt("JWT_REFRESH_EXPIRY_HOURS", 168)),
 		},
 		Redis: RedisConfig{
 			Host:     getEnv("REDIS_HOST", ""),
 			Port:     getEnv("REDIS_PORT", "6379"),
-			Password: getEnv("REDIS_PASSWORD", ""),
+			Password: readSecret("REDIS_PASSWORD", ""),
 			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
 		Minio: MinioConfig{
@@ -95,13 +96,12 @@ func LoadConfig() (*Config, error) {
 			MinioPublicHost: getEnv("MINIO_PUBLIC_HOST", "localhost:9000"),
 			MinioBucket:     getEnv("MINIO_BUCKET_NAME", ""),
 			MinioPort:       getEnv("MINIO_PORT", "9000"),
-			MinioAccessKey:  getEnv("MINIO_ACCESS_KEY", ""),
-			MinioSecretKey:  getEnv("MINIO_SECRET_KEY", ""),
+			MinioAccessKey:  readSecret("MINIO_ACCESS_KEY", ""),
+			MinioSecretKey:  readSecret("MINIO_SECRET_KEY", ""),
 			MinioSSL:        getEnvAsBool("MINIO_SSL", false),
 		},
 	}
 
-	// Валидация конфигурации
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
@@ -109,7 +109,6 @@ func LoadConfig() (*Config, error) {
 	return config, nil
 }
 
-// validate проверяет корректность конфигурации
 func (c *Config) validate() error {
 	if c.Database.Host == "" {
 		return fmt.Errorf("DB_HOST is required")
@@ -133,6 +132,20 @@ func (c *Config) validate() error {
 		return fmt.Errorf("MINIO_SECRET_KEY is required")
 	}
 	return nil
+}
+
+// readSecret reads a sensitive value from a Docker secret file if available,
+// then falls back to the environment variable, then to the default.
+// Secret path: /run/secrets/<lowercase_key> (e.g. DB_PASSWORD → /run/secrets/db_password)
+func readSecret(key, fallback string) string {
+	secretPath := "/run/secrets/" + strings.ToLower(key)
+	if data, err := os.ReadFile(secretPath); err == nil {
+		return strings.TrimSpace(string(data))
+	}
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return fallback
 }
 
 func getEnv(key, fallback string) string {

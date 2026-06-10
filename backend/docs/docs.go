@@ -65,35 +65,24 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Logout user",
-                "responses": {}
-            }
-        },
-        "/api/v1/auth/me": {
-            "get": {
-                "security": [
-                    {
-                        "BearerAuth": []
-                    }
-                ],
-                "produces": [
+                "consumes": [
                     "application/json"
                 ],
                 "tags": [
                     "auth"
                 ],
-                "summary": "Get current user profile",
-                "responses": {
-                    "200": {
-                        "description": "OK",
+                "summary": "Logout user",
+                "parameters": [
+                    {
+                        "description": "Optional refresh token to invalidate",
+                        "name": "body",
+                        "in": "body",
                         "schema": {
-                            "$ref": "#/definitions/user.UserResponseDTO"
+                            "$ref": "#/definitions/auth.LogoutRequestDTO"
                         }
                     }
-                }
+                ],
+                "responses": {}
             }
         },
         "/api/v1/auth/refresh": {
@@ -107,11 +96,11 @@ const docTemplate = `{
                 "tags": [
                     "auth"
                 ],
-                "summary": "Refresh token",
+                "summary": "Refresh access token",
                 "parameters": [
                     {
                         "description": "Refresh token",
-                        "name": "refresh",
+                        "name": "body",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -189,60 +178,23 @@ const docTemplate = `{
                     "users"
                 ],
                 "summary": "Create user (admin only)",
-                "parameters": [
+                "responses": {}
+            }
+        },
+        "/api/v1/users/me": {
+            "get": {
+                "security": [
                     {
-                        "type": "string",
-                        "description": "First name",
-                        "name": "first_name",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Last name",
-                        "name": "last_name",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Middle name",
-                        "name": "middle_name",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Phone number",
-                        "name": "phone",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Password",
-                        "name": "password",
-                        "in": "formData",
-                        "required": true
-                    },
-                    {
-                        "enum": [
-                            "user",
-                            "admin",
-                            "superuser"
-                        ],
-                        "type": "string",
-                        "default": "user",
-                        "description": "Role",
-                        "name": "role",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "file",
-                        "description": "User photo",
-                        "name": "photo",
-                        "in": "formData"
+                        "BearerAuth": []
                     }
                 ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "users"
+                ],
+                "summary": "Get current user profile",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -251,9 +203,7 @@ const docTemplate = `{
                         }
                     }
                 }
-            }
-        },
-        "/api/v1/users/me": {
+            },
             "put": {
                 "security": [
                     {
@@ -261,7 +211,6 @@ const docTemplate = `{
                     }
                 ],
                 "consumes": [
-                    "application/json",
                     "multipart/form-data"
                 ],
                 "produces": [
@@ -271,38 +220,6 @@ const docTemplate = `{
                     "users"
                 ],
                 "summary": "Update own profile",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "First Name",
-                        "name": "first_name",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Last Name",
-                        "name": "last_name",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Middle Name",
-                        "name": "middle_name",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Phone",
-                        "name": "phone",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "file",
-                        "description": "Profile Photo",
-                        "name": "photo",
-                        "in": "formData"
-                    }
-                ],
                 "responses": {}
             }
         },
@@ -390,7 +307,7 @@ const docTemplate = `{
                 "tags": [
                     "users"
                 ],
-                "summary": "Delete user",
+                "summary": "Delete user (admin only)",
                 "parameters": [
                     {
                         "type": "string",
@@ -417,7 +334,7 @@ const docTemplate = `{
                 "tags": [
                     "users"
                 ],
-                "summary": "Update user",
+                "summary": "Update user (admin only)",
                 "parameters": [
                     {
                         "type": "string",
@@ -425,51 +342,36 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "First Name",
-                        "name": "first_name",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Last Name",
-                        "name": "last_name",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Middle Name",
-                        "name": "middle_name",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Phone",
-                        "name": "phone",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "string",
-                        "description": "Role",
-                        "name": "role",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "boolean",
-                        "description": "Is Active",
-                        "name": "is_active",
-                        "in": "formData"
-                    },
-                    {
-                        "type": "file",
-                        "description": "Profile Photo",
-                        "name": "photo",
-                        "in": "formData"
                     }
                 ],
                 "responses": {}
+            }
+        },
+        "/health": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Health check",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
             }
         }
     },
@@ -508,12 +410,19 @@ const docTemplate = `{
             "properties": {
                 "password": {
                     "type": "string",
-                    "minLength": 8,
                     "example": "Password123"
                 },
                 "phone": {
                     "type": "string",
                     "example": "+996500500500"
+                }
+            }
+        },
+        "auth.LogoutRequestDTO": {
+            "type": "object",
+            "properties": {
+                "refresh_token": {
+                    "type": "string"
                 }
             }
         },

@@ -3,48 +3,101 @@ package token
 import (
 	"context"
 	"fmt"
-	"gin_auth_service/internal/domain/token"
+	domainToken "gin_auth_service/internal/domain/token"
 	"gin_auth_service/internal/pkg/jwt"
 	"time"
 
 	jwtv4 "github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
 )
 
-// usecase provides high-level operations for token management.
 type usecase struct {
-	repo token.Repository
+	repo domainToken.Repository
 	jwt  jwt.JWTService
 }
 
-// NewUseCase creates a new instance of UseCase.
-func NewUseCase(repo token.Repository, jwtService jwt.JWTService) UseCase {
-	return &usecase{
-		repo: repo,
-		jwt:  jwtService,
+func NewUseCase(repo domainToken.Repository, jwtService jwt.JWTService) UseCase {
+	return &usecase{repo: repo, jwt: jwtService}
+}
+
+func (uc *usecase) GenerateTokenPair(_ context.Context, userID, role string, isActive bool, accessExp, refreshExp time.Duration) (*TokenPair, error) {
+	now := time.Now()
+	accessExpiry := now.Add(accessExp)
+	refreshExpiry := now.Add(refreshExp)
+
+	gen := func(expiry time.Time, tokenType string) (string, error) {
+		return uc.jwt.CreateToken(jwt.MapClaims{
+			"user_id":   userID,
+			"role":      role,
+			"is_active": isActive,
+			"exp":       expiry.Unix(),
+			"type":      tokenType,
+			"jti":       uuid.Must(uuid.NewV7()).String(),
+			"iat":       now.Unix(),
+		})
 	}
+
+	accessToken, err := gen(accessExpiry, "access")
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
+	}
+	refreshToken, err := gen(refreshExpiry, "refresh")
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate refresh token: %w", err)
+	}
+
+	return &TokenPair{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		AccessExpiry: accessExpiry,
+	}, nil
+}
+
+// jtiFromToken extracts the jti claim from a JWT without verifying the signature.
+// Used only for blacklist key lookup; full verification is done by the caller.
+func jtiFromToken(tokenString string) (string, error) {
+	p := jwtv4.NewParser()
+	t, _, err := p.ParseUnverified(tokenString, jwtv4.MapClaims{})
+	if err != nil {
+		return "", fmt.Errorf("failed to parse token: %w", err)
+	}
+	claims, ok := t.Claims.(jwtv4.MapClaims)
+	if !ok {
+		return "", fmt.Errorf("invalid token claims type")
+	}
+	jti, ok := claims["jti"].(string)
+	if !ok || jti == "" {
+		return "", fmt.Errorf("missing or empty jti claim")
+	}
+	return jti, nil
 }
 
 func (uc *usecase) BlacklistToken(ctx context.Context, tokenString string, expiry time.Time) error {
 	if tokenString == "" {
 		return fmt.Errorf("token string is required")
 	}
-
-	tokenKey := fmt.Sprintf("blacklist:%s", tokenString)
-	blacklistExpiry := time.Until(expiry)
-	if blacklistExpiry <= 0 {
-		blacklistExpiry = time.Hour
+	jti, err := jtiFromToken(tokenString)
+	if err != nil {
+		return fmt.Errorf("cannot blacklist token: %w", err)
 	}
-
-	return uc.repo.Set(ctx, tokenKey, "blacklisted", blacklistExpiry)
+	ttl := time.Until(expiry)
+	if ttl <= 0 {
+		ttl = time.Hour
+	}
+	return uc.repo.Set(ctx, "blacklist:"+jti, "1", ttl)
 }
 
 func (uc *usecase) IsTokenBlacklisted(ctx context.Context, tokenString string) (bool, error) {
 	if tokenString == "" {
 		return false, fmt.Errorf("token string is required")
 	}
-
-	tokenKey := fmt.Sprintf("blacklist:%s", tokenString)
-	return uc.repo.Exists(ctx, tokenKey)
+	jti, err := jtiFromToken(tokenString)
+	if err != nil {
+		// Malformed token has no JTI — not a blacklist concern;
+		// signature verification downstream will reject it.
+		return false, nil
+	}
+	return uc.repo.Exists(ctx, "blacklist:"+jti)
 }
 
 func (uc *usecase) GetTokenInfo(ctx context.Context, tokenString string) (*jwt.TokenInfo, error) {
@@ -57,20 +110,11 @@ func (uc *usecase) GetTokenInfo(ctx context.Context, tokenString string) (*jwt.T
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
 
-	isBlacklisted, err := uc.IsTokenBlacklisted(ctx, tokenString)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check blacklist status: %w", err)
-	}
-	if isBlacklisted {
-		return nil, fmt.Errorf("token is blacklisted")
-	}
-
 	claims, ok := token.Claims.(jwtv4.MapClaims)
 	if !ok {
 		return nil, fmt.Errorf("invalid token claims")
 	}
 
-	// Helper function for claims extraction
 	getStr := func(key string) string {
 		if val, ok := claims[key].(string); ok {
 			return val
@@ -83,15 +127,34 @@ func (uc *usecase) GetTokenInfo(ctx context.Context, tokenString string) (*jwt.T
 		}
 		return 0
 	}
+	getBool := func(key string) bool {
+		if val, ok := claims[key].(bool); ok {
+			return val
+		}
+		return false
+	}
 
-	tokenInfo := &jwt.TokenInfo{
+	jti := getStr("jti")
+	if jti == "" {
+		return nil, fmt.Errorf("token missing jti claim")
+	}
+
+	// Use JTI directly — token is already fully parsed above, no second parse needed.
+	isBlacklisted, err := uc.repo.Exists(ctx, "blacklist:"+jti)
+	if err != nil {
+		return nil, fmt.Errorf("failed to check blacklist status: %w", err)
+	}
+	if isBlacklisted {
+		return nil, fmt.Errorf("token is blacklisted")
+	}
+
+	return &jwt.TokenInfo{
 		UserID:    getStr("user_id"),
 		Role:      getStr("role"),
 		Type:      getStr("type"),
+		IsActive:  getBool("is_active"),
 		ExpiresAt: time.Unix(int64(getFloat("exp")), 0),
 		IssuedAt:  time.Unix(int64(getFloat("iat")), 0),
-		JTI:       getStr("jti"),
-	}
-
-	return tokenInfo, nil
+		JTI:       jti,
+	}, nil
 }

@@ -45,6 +45,6 @@ tmp/
 temp/
 
 # Environment files (should be passed via build args or secrets)
-.env
+../.env
 .env.local
 .env.*.local

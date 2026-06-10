@@ -4,7 +4,6 @@ import (
 	"context"
 	"gin_auth_service/internal/domain/file"
 	"io"
-	"strings"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -21,10 +20,14 @@ type Storage struct {
 
 // NewStorage creates a new instance of MinIO storage.
 func NewStorage(endpoint, accessKey, secretKey string, useSSL bool, publicEndpoint string) (*Storage, error) {
-	// Internal client for operations (uses docker network hostname)
+	// Internal client for operations (uses docker network hostname).
+	// BucketLookupPath forces path-style URLs to avoid virtual-hosted DNS issues.
+	// Region "us-east-1" skips the GetBucketLocation network round-trip.
 	client, err := minio.New(endpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: useSSL,
+		Creds:        credentials.NewStaticV4(accessKey, secretKey, ""),
+		Secure:       useSSL,
+		BucketLookup: minio.BucketLookupPath,
+		Region:       "us-east-1",
 	})
 	if err != nil {
 		return nil, err
@@ -36,10 +39,15 @@ func NewStorage(endpoint, accessKey, secretKey string, useSSL bool, publicEndpoi
 		publicEndpoint = "localhost:9000"
 	}
 
-	// Public client for URL generation (uses public endpoint)
+	// Public client for presigned URL generation.
+	// Uses publicEndpoint so generated URLs are browser-accessible.
+	// Region skips the GetBucketLocation network call — from inside Docker,
+	// "localhost" resolves to the container, not to the MinIO service.
 	publicClient, err := minio.New(publicEndpoint, &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKey, secretKey, ""),
-		Secure: useSSL,
+		Creds:        credentials.NewStaticV4(accessKey, secretKey, ""),
+		Secure:       useSSL,
+		BucketLookup: minio.BucketLookupPath,
+		Region:       "us-east-1",
 	})
 	if err != nil {
 		return nil, err
@@ -73,21 +81,21 @@ func (m *Storage) GetFileURL(ctx context.Context, bucket, objectName string, exp
 	if expiry == 0 {
 		expiry = time.Hour * 24
 	}
-	// Generate presigned URL using public client (localhost:9000) for valid signature
 	url, err := m.publicClient.PresignedGetObject(ctx, bucket, objectName, expiry, nil)
 	if err != nil {
 		return "", err
 	}
-
-	// Rewrite URL from minio:9000 to localhost:8085 for browser access through nginx
-	urlStr := url.String()
-	urlStr = strings.Replace(urlStr, "minio:9000", "localhost:8085", 1)
-
-	return urlStr, nil
+	return url.String(), nil
 }
 
 func (m *Storage) BucketExists(ctx context.Context, bucket string) (bool, error) {
 	return m.client.BucketExists(ctx, bucket)
+}
+
+// Ping checks MinIO connectivity by listing buckets.
+func (m *Storage) Ping(ctx context.Context) error {
+	_, err := m.client.ListBuckets(ctx)
+	return err
 }
 
 func (m *Storage) CreateBucket(ctx context.Context, bucket string) error {

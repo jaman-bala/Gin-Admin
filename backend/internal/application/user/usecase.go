@@ -4,30 +4,27 @@ import (
 	"context"
 	"fmt"
 	"gin_auth_service/internal/application/file"
-	"gin_auth_service/internal/domain/user"
+	domainUser "gin_auth_service/internal/domain/user"
 	"gin_auth_service/internal/pkg/hash"
+	"gin_auth_service/internal/pkg/utils"
 	"gin_auth_service/pkg/errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-
 type usecase struct {
-	repo        user.Repository
+	repo        domainUser.Repository
 	fileService file.UseCase
 }
 
-// NewUseCase creates a new instance of UseCase.
-func NewUseCase(repo user.Repository, fileService file.UseCase) UseCase {
-	return &usecase{
-		repo:        repo,
-		fileService: fileService,
-	}
+func NewUseCase(repo domainUser.Repository, fileService file.UseCase) UseCase {
+	return &usecase{repo: repo, fileService: fileService}
 }
 
 func (uc *usecase) GetAll(ctx context.Context, page, limit int, search string, isActive *bool) (*UserListResponse, error) {
-	params := user.FilterParams{
+	params := domainUser.FilterParams{
 		Page:     page,
 		Limit:    limit,
 		Search:   search,
@@ -36,19 +33,15 @@ func (uc *usecase) GetAll(ctx context.Context, page, limit int, search string, i
 
 	users, total, err := uc.repo.GetWithFilters(ctx, params)
 	if err != nil {
-		return nil, errors.ErrUserNotFound
+		return nil, fmt.Errorf("failed to list users: %w", err)
 	}
 
-	var dtos []*UserResponseDTO
+	dtos := make([]*UserResponseDTO, 0, len(users))
 	for _, u := range users {
 		var dto UserResponseDTO
 		dto.FromModel(u)
 		uc.enrichDTO(ctx, &dto)
 		dtos = append(dtos, &dto)
-	}
-
-	if dtos == nil {
-		dtos = []*UserResponseDTO{}
 	}
 
 	return &UserListResponse{
@@ -59,18 +52,15 @@ func (uc *usecase) GetAll(ctx context.Context, page, limit int, search string, i
 	}, nil
 }
 
-func (uc *usecase) Create(ctx context.Context, req UserRequestDTO, photoFile *FileUpload) (*UserResponseDTO, error) {
-	existing, _ := uc.repo.FindByPhone(ctx, req.Phone)
-	if existing != nil {
-		return nil, errors.ErrConflict
-	}
+func (uc *usecase) Create(ctx context.Context, req UserRequestDTO, photo *file.FileUpload) (*UserResponseDTO, error) {
+	req.Phone = utils.NormalizePhone(req.Phone)
 	hashedPassword, err := hash.HashPassword(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("error hashing password: %w", err)
 	}
 
-	u := &user.User{
-		ID:         uuid.New(),
+	u := &domainUser.User{
+		ID:         uuid.Must(uuid.NewV7()),
 		FirstName:  req.FirstName,
 		LastName:   req.LastName,
 		MiddleName: req.MiddleName,
@@ -82,14 +72,16 @@ func (uc *usecase) Create(ctx context.Context, req UserRequestDTO, photoFile *Fi
 		UpdatedAt:  time.Now(),
 	}
 
-	if photoFile != nil {
-		filePath, err := uc.saveUserPhoto(ctx, photoFile)
+	if photo != nil {
+		filePath, err := uc.fileService.UploadFile(ctx, photo, "user")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error saving photo: %w", err)
 		}
 		u.Photo = filePath
 	}
 
+	// Unique phone constraint is enforced by the DB; the repo maps the
+	// violation to ErrConflict, which propagates here without wrapping.
 	if err := uc.repo.Create(ctx, u); err != nil {
 		return nil, err
 	}
@@ -103,9 +95,8 @@ func (uc *usecase) Create(ctx context.Context, req UserRequestDTO, photoFile *Fi
 func (uc *usecase) GetByID(ctx context.Context, id uuid.UUID) (*UserResponseDTO, error) {
 	u, err := uc.repo.GetID(ctx, id)
 	if err != nil {
-		return nil, errors.ErrUserNotFound
+		return nil, err
 	}
-
 	var dto UserResponseDTO
 	dto.FromModel(u)
 	uc.enrichDTO(ctx, &dto)
@@ -113,9 +104,66 @@ func (uc *usecase) GetByID(ctx context.Context, id uuid.UUID) (*UserResponseDTO,
 }
 
 func (uc *usecase) GetByPhone(ctx context.Context, phone string) (*UserResponseDTO, error) {
+	phone = utils.NormalizePhone(phone)
 	u, err := uc.repo.FindByPhone(ctx, phone)
 	if err != nil {
-		return nil, errors.ErrUserNotFound
+		return nil, err
+	}
+	var dto UserResponseDTO
+	dto.FromModel(u)
+	uc.enrichDTO(ctx, &dto)
+	return &dto, nil
+}
+
+func (uc *usecase) GetMe(ctx context.Context, id uuid.UUID) (*UserResponseDTO, error) {
+	u, err := uc.repo.GetID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	var dto UserResponseDTO
+	dto.FromModel(u)
+	uc.enrichDTO(ctx, &dto)
+	return &dto, nil
+}
+
+// PatchSelf updates the caller's own profile. Role and IsActive are excluded
+// from req — users cannot escalate their own privileges.
+func (uc *usecase) PatchSelf(ctx context.Context, id uuid.UUID, req UserSelfUpdateDTO, photo *file.FileUpload) (*UserResponseDTO, error) {
+	if id == uuid.Nil {
+		return nil, errors.ErrInvalidUUID
+	}
+
+	if req.Phone != nil {
+		normalized := utils.NormalizePhone(*req.Phone)
+		req.Phone = &normalized
+	}
+
+	u, err := uc.repo.GetID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	req.ApplyToModel(u)
+
+	if req.Password != nil && *req.Password != "" {
+		hashed, err := hash.HashPassword(*req.Password)
+		if err != nil {
+			return nil, fmt.Errorf("error hashing password: %w", err)
+		}
+		u.Password = hashed
+	}
+
+	if photo != nil {
+		filePath, err := uc.fileService.UploadFile(ctx, photo, "user")
+		if err != nil {
+			return nil, fmt.Errorf("error saving photo: %w", err)
+		}
+		u.Photo = filePath
+	}
+
+	u.UpdatedAt = time.Now()
+	if err := uc.repo.Patch(ctx, u); err != nil {
+		return nil, err
 	}
 
 	var dto UserResponseDTO
@@ -124,37 +172,43 @@ func (uc *usecase) GetByPhone(ctx context.Context, phone string) (*UserResponseD
 	return &dto, nil
 }
 
-func (uc *usecase) Patch(ctx context.Context, id uuid.UUID, request UserUpdateDTO, photoFile *FileUpload) (*UserResponseDTO, error) {
+// Patch is the admin-only update; it allows changing Role and IsActive.
+func (uc *usecase) Patch(ctx context.Context, id uuid.UUID, req UserUpdateDTO, photo *file.FileUpload) (*UserResponseDTO, error) {
 	if id == uuid.Nil {
 		return nil, errors.ErrInvalidUUID
 	}
 
-	u, err := uc.repo.GetID(ctx, id)
-	if err != nil {
-		return nil, errors.ErrUserNotFound
+	if req.Phone != nil {
+		normalized := utils.NormalizePhone(*req.Phone)
+		req.Phone = &normalized
 	}
 
-	request.ApplyToModel(u)
+	u, err := uc.repo.GetID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 
-	if request.Password != nil && *request.Password != "" {
-		hashed, err := hash.HashPassword(*request.Password)
+	req.ApplyToModel(u)
+
+	if req.Password != nil && *req.Password != "" {
+		hashed, err := hash.HashPassword(*req.Password)
 		if err != nil {
 			return nil, fmt.Errorf("error hashing password: %w", err)
 		}
 		u.Password = hashed
 	}
 
-	if photoFile != nil {
-		filePath, err := uc.saveUserPhoto(ctx, photoFile)
+	if photo != nil {
+		filePath, err := uc.fileService.UploadFile(ctx, photo, "user")
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("error saving photo: %w", err)
 		}
 		u.Photo = filePath
 	}
 
 	u.UpdatedAt = time.Now()
 	if err := uc.repo.Patch(ctx, u); err != nil {
-		return nil, errors.ErrUpdateConflict
+		return nil, err
 	}
 
 	var dto UserResponseDTO
@@ -170,32 +224,14 @@ func (uc *usecase) Delete(ctx context.Context, id uuid.UUID) error {
 	return uc.repo.Delete(ctx, id)
 }
 
-func (uc *usecase) saveUserPhoto(ctx context.Context, photoFile *FileUpload) (string, error) {
-	if photoFile == nil {
-		return "", nil
-	}
-
-	// Converting to file.FileUpload which we'll create next
-	fileDTO := &file.FileUpload{
-		Filename:    photoFile.Filename,
-		Size:        photoFile.Size,
-		ContentType: photoFile.ContentType,
-		File:        photoFile.File,
-	}
-
-	filePath, err := uc.fileService.UploadFile(ctx, fileDTO, "user")
-	if err != nil {
-		return "", fmt.Errorf("error saving photo: %w", err)
-	}
-
-	return filePath, nil
-}
-
 func (uc *usecase) enrichDTO(ctx context.Context, dto *UserResponseDTO) {
-	if dto.Photo != "" {
-		url, err := uc.fileService.GetFullURL(ctx, dto.Photo)
-		if err == nil {
-			dto.Photo = url
-		}
+	if dto.Photo == "" {
+		return
 	}
+	url, err := uc.fileService.GetFullURL(ctx, dto.Photo)
+	if err != nil {
+		slog.Error("enrichDTO: failed to generate photo URL", "objectName", dto.Photo, "error", err)
+		return
+	}
+	dto.Photo = url
 }

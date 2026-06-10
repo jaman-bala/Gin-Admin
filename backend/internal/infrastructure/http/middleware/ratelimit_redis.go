@@ -1,40 +1,49 @@
 package middleware
 
 import (
+	"context"
 	"fmt"
-	"gin_auth_service/internal/domain/token"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// LoginRateLimitMiddleware provides brute-force protection using Redis.
-// Limits: 5 attempts per 15 minutes per IP.
-func LoginRateLimitMiddleware(repo token.Repository) gin.HandlerFunc {
+// RateLimiter is the interface the login rate limiter requires from its storage backend.
+// Defined here (consumer side) so the infrastructure layer depends on domain, not vice versa.
+type RateLimiter interface {
+	// Increment atomically increments the counter for key, setting window TTL on first call.
+	// Returns the counter value after increment.
+	Increment(ctx context.Context, key string, window time.Duration) (int64, error)
+	// Reset deletes the counter (called on successful login).
+	Reset(ctx context.Context, key string) error
+}
+
+// LoginRateLimitMiddleware provides brute-force protection.
+// Limits: 5 failed attempts per 15 minutes per IP.
+//
+// Flow: INCR (atomic) → if over limit, block immediately → c.Next() → 200? Reset counter.
+// On Redis failure the middleware fails open so a Redis outage never locks out users.
+func LoginRateLimitMiddleware(limiter RateLimiter) gin.HandlerFunc {
 	const (
-		maxAttempts = 5
-		window      = 15 * time.Minute
+		maxAttempts int64 = 5
+		window            = 15 * time.Minute
 	)
 
 	return func(c *gin.Context) {
-		clientIP := c.ClientIP()
-		key := fmt.Sprintf("rate_limit:login:%s", clientIP)
-
+		key := fmt.Sprintf("rate_limit:login:%s", c.ClientIP())
 		ctx := c.Request.Context()
 
-		// Get current attempts count
-		val, err := repo.Get(ctx, key)
-		attempts := 0
-		if err == nil && val != "" {
-			attempts, _ = strconv.Atoi(val)
+		count, err := limiter.Increment(ctx, key, window)
+		if err != nil {
+			// Redis unavailable — fail open rather than blocking legitimate users.
+			c.Next()
+			return
 		}
 
-		// Check if limit exceeded
-		if attempts >= maxAttempts {
+		if count > maxAttempts {
 			c.JSON(http.StatusTooManyRequests, gin.H{
-				"error":       "Слишком много попыток входа. Попробуйте позже.",
+				"error":       "Too many login attempts. Please try again later.",
 				"code":        "RATE_LIMIT_EXCEEDED",
 				"retry_after": window.Seconds(),
 			})
@@ -42,10 +51,10 @@ func LoginRateLimitMiddleware(repo token.Repository) gin.HandlerFunc {
 			return
 		}
 
-		// Increment attempts
-		newAttempts := attempts + 1
-		repo.Set(ctx, key, newAttempts, window)
-
 		c.Next()
+
+		if c.Writer.Status() == http.StatusOK {
+			limiter.Reset(ctx, key)
+		}
 	}
 }

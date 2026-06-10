@@ -2,9 +2,9 @@
 package postgres
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"gin_auth_service/config"
 	_ "gin_auth_service/docs" // swagger documentation
@@ -15,51 +15,6 @@ import (
 	_ "github.com/lib/pq" // postgres driver
 	goose "github.com/pressly/goose/v3"
 )
-
-// TransactionManager provides transaction management for database operations.
-type TransactionManager struct {
-	db *sqlx.DB
-}
-
-// NewTransactionManager creates a new transaction manager.
-func NewTransactionManager(db *sqlx.DB) *TransactionManager {
-	return &TransactionManager{db: db}
-}
-
-// BeginTx starts a new transaction.
-func (tm *TransactionManager) BeginTx(ctx context.Context) (*sqlx.Tx, error) {
-	return tm.db.BeginTxx(ctx, nil)
-}
-
-// WithTx executes a function within a transaction.
-// If the function returns an error, the transaction is rolled back.
-// Otherwise, it is committed.
-func (tm *TransactionManager) WithTx(ctx context.Context, fn func(tx *sqlx.Tx) error) error {
-	tx, err := tm.BeginTx(ctx)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		if p := recover(); p != nil {
-			_ = tx.Rollback()
-			panic(p) // re-throw panic after rollback
-		}
-	}()
-
-	if err := fn(tx); err != nil {
-		if rbErr := tx.Rollback(); rbErr != nil {
-			return fmt.Errorf("tx error: %v, rollback error: %v", err, rbErr)
-		}
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit error: %w", err)
-	}
-
-	return nil
-}
 
 // InitDB initializes the database connection and optionally applies migrations.
 func InitDB(cfg *config.Config, runMigrations bool) (*sqlx.DB, error) {
@@ -100,19 +55,36 @@ func InitDB(cfg *config.Config, runMigrations bool) (*sqlx.DB, error) {
 }
 
 func createDefaultAdmin(db *sqlx.DB) {
-	hashedPassword, err := hash.HashPassword("Password123")
-	if err != nil {
-		slog.Error("Error hashing password", "error", err)
+	phone := os.Getenv("ADMIN_DEFAULT_PHONE")
+	if phone == "" {
+		phone = "+996500500500"
+	}
+	password := os.Getenv("ADMIN_DEFAULT_PASSWORD")
+	if password == "" {
+		slog.Warn("ADMIN_DEFAULT_PASSWORD not set — skipping default admin creation")
 		return
 	}
 
-	query := `
+	hashedPassword, err := hash.HashPassword(password)
+	if err != nil {
+		slog.Error("Error hashing admin password", "error", err)
+		return
+	}
+
+	const query = `
 		INSERT INTO users (phone, password, role, is_active)
 		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (phone) DO UPDATE SET password = EXCLUDED.password
+		ON CONFLICT (phone) DO NOTHING
 	`
-	_, err = db.Exec(query, "+996500500500", hashedPassword, "superuser", true)
+	result, err := db.Exec(query, phone, hashedPassword, "superuser", true)
 	if err != nil {
-		slog.Error("Error creating admin", "error", err)
+		slog.Error("Error creating default admin", "error", err)
+		return
+	}
+
+	if rows, _ := result.RowsAffected(); rows > 0 {
+		slog.Info("Default admin created", "phone", phone)
+	} else {
+		slog.Info("Default admin already exists, skipping", "phone", phone)
 	}
 }

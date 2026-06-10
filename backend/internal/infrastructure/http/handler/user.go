@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"gin_auth_service/internal/application/file"
 	"gin_auth_service/internal/application/user"
 	"net/http"
 	"strconv"
@@ -14,11 +15,34 @@ type UserHandler struct {
 	usecase user.UseCase
 }
 
-// NewUserHandler creates a new instance of UserHandler.
 func NewUserHandler(usecase user.UseCase) *UserHandler {
-	return &UserHandler{
-		usecase: usecase,
+	return &UserHandler{usecase: usecase}
+}
+
+// GetMe godoc
+// @Summary Get current user profile
+// @Tags users
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} user.UserResponseDTO
+// @Router /api/v1/users/me [get]
+func (h *UserHandler) GetMe(c *gin.Context) {
+	uid, exists := c.Get("id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found in context"})
+		return
 	}
+	id, ok := uid.(uuid.UUID)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID type in context"})
+		return
+	}
+	dto, err := h.usecase.GetMe(c.Request.Context(), id)
+	if err != nil {
+		respondError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, dto)
 }
 
 // GetAll godoc
@@ -33,10 +57,7 @@ func NewUserHandler(usecase user.UseCase) *UserHandler {
 // @Success 200 {object} user.UserListResponse
 // @Router /api/v1/users [get]
 func (h *UserHandler) GetAll(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	page := 1
-	limit := 10
+	page, limit := 1, 10
 	if p := c.Query("page"); p != "" {
 		if v, err := strconv.Atoi(p); err == nil && v > 0 {
 			page = v
@@ -47,7 +68,6 @@ func (h *UserHandler) GetAll(c *gin.Context) {
 			limit = v
 		}
 	}
-	search := c.Query("search")
 
 	var isActive *bool
 	if ia := c.Query("is_active"); ia != "" {
@@ -55,9 +75,9 @@ func (h *UserHandler) GetAll(c *gin.Context) {
 		isActive = &v
 	}
 
-	result, err := h.usecase.GetAll(ctx, page, limit, search, isActive)
+	result, err := h.usecase.GetAll(c.Request.Context(), page, limit, c.Query("search"), isActive)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, result)
@@ -71,20 +91,16 @@ func (h *UserHandler) GetAll(c *gin.Context) {
 // @Produce json
 // @Router /api/v1/users/{id} [get]
 func (h *UserHandler) GetByID(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
-
-	ctx := c.Request.Context()
-	u, err := h.usecase.GetByID(ctx, id)
+	u, err := h.usecase.GetByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		respondError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, u)
 }
 
@@ -96,11 +112,9 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 // @Produce json
 // @Router /api/v1/users/phone/{phone} [get]
 func (h *UserHandler) GetByPhone(c *gin.Context) {
-	phone := c.Param("phone")
-	ctx := c.Request.Context()
-	u, err := h.usecase.GetByPhone(ctx, phone)
+	u, err := h.usecase.GetByPhone(c.Request.Context(), c.Param("phone"))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		respondError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, u)
@@ -110,13 +124,8 @@ func (h *UserHandler) GetByPhone(c *gin.Context) {
 // @Summary Update own profile
 // @Tags users
 // @Security BearerAuth
-// @Accept json,multipart/form-data
+// @Accept multipart/form-data
 // @Produce json
-// @Param first_name formData string false "First Name"
-// @Param last_name formData string false "Last Name"
-// @Param middle_name formData string false "Middle Name"
-// @Param phone formData string false "Phone"
-// @Param photo formData file false "Profile Photo"
 // @Router /api/v1/users/me [put]
 func (h *UserHandler) UpdateMe(c *gin.Context) {
 	uid, exists := c.Get("id")
@@ -124,61 +133,36 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User ID not found in context"})
 		return
 	}
-
 	id, ok := uid.(uuid.UUID)
 	if !ok {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid user ID type in context"})
 		return
 	}
 
-	var req user.UserUpdateDTO
+	var req user.UserSelfUpdateDTO
 	if err := c.ShouldBind(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	var photoFile *user.FileUpload
-	if file, err := c.FormFile("photo"); err == nil && file != nil {
-		src, err := file.Open()
-		if err == nil {
-			defer src.Close()
-			photoFile = &user.FileUpload{
-				Filename:    file.Filename,
-				Size:        file.Size,
-				ContentType: file.Header.Get("Content-Type"),
-				File:        src,
-			}
-		}
-	}
-
-	ctx := c.Request.Context()
-	u, err := h.usecase.Patch(ctx, id, req, photoFile)
+	u, err := h.usecase.PatchSelf(c.Request.Context(), id, req, extractPhoto(c))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, err)
 		return
 	}
-
 	c.JSON(http.StatusOK, u)
 }
 
 // Patch godoc
-// @Summary Update user
+// @Summary Update user (admin only)
 // @Tags users
 // @Security BearerAuth
 // @Accept multipart/form-data
 // @Produce json
 // @Param id path string true "User ID"
-// @Param first_name formData string false "First Name"
-// @Param last_name formData string false "Last Name"
-// @Param middle_name formData string false "Middle Name"
-// @Param phone formData string false "Phone"
-// @Param role formData string false "Role"
-// @Param is_active formData bool false "Is Active"
-// @Param photo formData file false "Profile Photo"
 // @Router /api/v1/users/{id} [patch]
 func (h *UserHandler) Patch(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
@@ -190,24 +174,9 @@ func (h *UserHandler) Patch(c *gin.Context) {
 		return
 	}
 
-	var photoFile *user.FileUpload
-	if file, err := c.FormFile("photo"); err == nil && file != nil {
-		src, err := file.Open()
-		if err == nil {
-			defer src.Close()
-			photoFile = &user.FileUpload{
-				Filename:    file.Filename,
-				Size:        file.Size,
-				ContentType: file.Header.Get("Content-Type"),
-				File:        src,
-			}
-		}
-	}
-
-	ctx := c.Request.Context()
-	u, err := h.usecase.Patch(ctx, id, req, photoFile)
+	u, err := h.usecase.Patch(c.Request.Context(), id, req, extractPhoto(c))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, u)
@@ -219,14 +188,6 @@ func (h *UserHandler) Patch(c *gin.Context) {
 // @Security BearerAuth
 // @Accept multipart/form-data
 // @Produce json
-// @Param first_name formData string true "First name"
-// @Param last_name formData string true "Last name"
-// @Param middle_name formData string false "Middle name"
-// @Param phone formData string true "Phone number"
-// @Param password formData string true "Password"
-// @Param role formData string false "Role" Enums(user, admin, superuser) default(user)
-// @Param photo formData file false "User photo"
-// @Success 200 {object} user.UserResponseDTO
 // @Router /api/v1/users [post]
 func (h *UserHandler) Create(c *gin.Context) {
 	var req user.UserRequestDTO
@@ -235,51 +196,49 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 
-	// Handle photo upload
-	var photoFile *user.FileUpload
-	if file, err := c.FormFile("photo"); err == nil && file != nil {
-		src, err := file.Open()
-		if err == nil {
-			defer src.Close()
-			photoFile = &user.FileUpload{
-				Filename:    file.Filename,
-				Size:        file.Size,
-				ContentType: file.Header.Get("Content-Type"),
-				File:        src, // ✅ fix: передаём io.Reader в MinIO
-			}
-		}
-	}
-
-	ctx := c.Request.Context()
-	u, err := h.usecase.Create(ctx, req, photoFile)
+	u, err := h.usecase.Create(c.Request.Context(), req, extractPhoto(c))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, err)
 		return
 	}
-
-	// Set entity_id in context for AuditMiddleware
-	c.Set("entity_id", u.ID)
-
-	c.JSON(http.StatusOK, u)
+	c.JSON(http.StatusCreated, u)
 }
 
 // Delete godoc
-// @Summary Delete user
+// @Summary Delete user (admin only)
 // @Tags users
 // @Security BearerAuth
 // @Param id path string true "User ID"
 // @Router /api/v1/users/{id} [delete]
 func (h *UserHandler) Delete(c *gin.Context) {
-	idParam := c.Param("id")
-	id, err := uuid.Parse(idParam)
+	id, err := uuid.Parse(c.Param("id"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
-	ctx := c.Request.Context()
-	if err := h.usecase.Delete(ctx, id); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	if err := h.usecase.Delete(c.Request.Context(), id); err != nil {
+		respondError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
+}
+
+// extractPhoto reads an uploaded photo from the multipart form, if present.
+// Returns nil when the field is absent, has an empty filename, or has zero size
+// (browsers submit empty file inputs as a part with an empty filename).
+func extractPhoto(c *gin.Context) *file.FileUpload {
+	f, err := c.FormFile("photo")
+	if err != nil || f == nil || f.Size == 0 || f.Filename == "" {
+		return nil
+	}
+	src, err := f.Open()
+	if err != nil {
+		return nil
+	}
+	return &file.FileUpload{
+		Filename:    f.Filename,
+		Size:        f.Size,
+		ContentType: f.Header.Get("Content-Type"),
+		File:        src,
+	}
 }

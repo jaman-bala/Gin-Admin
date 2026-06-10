@@ -17,7 +17,6 @@ type FilterParams struct {
 // Repository defines the interface for user persistence.
 type Repository interface {
 	Create(ctx context.Context, user *User) error
-	Get(ctx context.Context) ([]*User, error)
 	GetWithFilters(ctx context.Context, params FilterParams) ([]*User, int, error)
 	GetID(ctx context.Context, id uuid.UUID) (*User, error)
 	Patch(ctx context.Context, user *User) error

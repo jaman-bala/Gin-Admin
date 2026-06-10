@@ -5,18 +5,19 @@ import (
 	"fmt"
 	"gin_auth_service/internal/domain/file"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-// usecase provides high-level operations for file management.
 type usecase struct {
-	repo       file.Repository
-	bucketName string
+	repo           file.Repository
+	bucketName     string
+	initBucketOnce sync.Once
+	initBucketErr  error
 }
 
-// NewUseCase creates a new instance of UseCase.
 func NewUseCase(repo file.Repository, bucketName string) UseCase {
 	if bucketName == "" {
 		bucketName = "uploads"
@@ -27,49 +28,52 @@ func NewUseCase(repo file.Repository, bucketName string) UseCase {
 	}
 }
 
-// UploadFile uploads a file to the storage and returns the URL.
-func (uc *usecase) UploadFile(ctx context.Context, input *FileUpload, folder string) (string, error) {
-	// Создаем уникальное имя файла
-	ext := filepath.Ext(input.Filename)
-	objectName := fmt.Sprintf("%s/%s%s", folder, uuid.New().String(), ext)
-
-	// Используем сконфигурированный бакет
-	bucket := uc.bucketName
-
-	// Проверяем существование бакета (можно вынести в инициализацию)
-	exists, err := uc.repo.BucketExists(ctx, bucket)
-	if err != nil {
-		return "", err
-	}
-	if !exists {
-		if err := uc.repo.CreateBucket(ctx, bucket); err != nil {
-			return "", err
+// ensureBucket creates the bucket on the first upload. If the first attempt
+// fails the Once is spent and subsequent calls return the cached error; the
+// container should be restarted in that case.
+func (uc *usecase) ensureBucket(ctx context.Context) error {
+	uc.initBucketOnce.Do(func() {
+		exists, err := uc.repo.BucketExists(ctx, uc.bucketName)
+		if err != nil {
+			uc.initBucketErr = fmt.Errorf("bucket check: %w", err)
+			return
 		}
-	}
-
-	url, err := uc.repo.UploadFile(ctx, bucket, objectName, input.File, input.Size, input.ContentType)
-	if err != nil {
-		return "", err
-	}
-
-	return url, nil
+		if !exists {
+			if err := uc.repo.CreateBucket(ctx, uc.bucketName); err != nil {
+				uc.initBucketErr = fmt.Errorf("bucket create: %w", err)
+			}
+		}
+	})
+	return uc.initBucketErr
 }
 
-// DeleteFile removes a file from storage.
+func (uc *usecase) UploadFile(ctx context.Context, input *FileUpload, folder string) (string, error) {
+	defer input.File.Close()
+
+	if err := uc.ensureBucket(ctx); err != nil {
+		return "", err
+	}
+
+	ext := filepath.Ext(input.Filename)
+	objectName := fmt.Sprintf("%s/%s%s", folder, uuid.Must(uuid.NewV7()).String(), ext)
+
+	if _, err := uc.repo.UploadFile(ctx, uc.bucketName, objectName, input.File, input.Size, input.ContentType); err != nil {
+		return "", err
+	}
+	return objectName, nil
+}
+
 func (uc *usecase) DeleteFile(ctx context.Context, bucket, objectName string) error {
 	return uc.repo.DeleteFile(ctx, bucket, objectName)
 }
 
-// GetFileURL generates a URL for a file.
 func (uc *usecase) GetFileURL(ctx context.Context, bucket, objectName string, expiry time.Duration) (string, error) {
 	return uc.repo.GetFileURL(ctx, bucket, objectName, expiry)
 }
 
-// GetFullURL generates a signed URL for a file path stored in the DB.
 func (uc *usecase) GetFullURL(ctx context.Context, objectName string) (string, error) {
 	if objectName == "" {
 		return "", nil
 	}
-	// Using the configured bucket
 	return uc.repo.GetFileURL(ctx, uc.bucketName, objectName, time.Hour*24)
 }

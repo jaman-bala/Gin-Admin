@@ -22,10 +22,6 @@ func AuditMiddleware(service auditlog.UseCase) gin.HandlerFunc {
 
 		c.Next()
 
-		if method == "GET" {
-			return
-		}
-
 		status := c.Writer.Status()
 
 		var userID = uuid.Nil
@@ -40,6 +36,9 @@ func AuditMiddleware(service auditlog.UseCase) gin.HandlerFunc {
 			if parsedID, err := uuid.Parse(idParam); err == nil {
 				entityID = parsedID
 			}
+		} else if strings.HasSuffix(path, "/me") {
+			// /users/me — entity is the authenticated user themselves
+			entityID = userID
 		}
 
 		entityType := "Unknown"
@@ -54,25 +53,19 @@ func AuditMiddleware(service auditlog.UseCase) gin.HandlerFunc {
 		var actionDescription string
 		switch method {
 		case "GET":
-			actionDescription = "Просмотр"
+			actionDescription = "View"
 		case "POST":
-			actionDescription = "Создание"
+			actionDescription = "Create"
 		case "PUT", "PATCH":
-			actionDescription = "Обновление"
+			actionDescription = "Update"
 		case "DELETE":
-			actionDescription = "Удаление"
+			actionDescription = "Delete"
 		default:
 			actionDescription = method
 		}
 
-		logData := fmt.Sprintf("Действие: %s %s | Путь: %s", actionDescription, entityType, path)
-
-		// Capture entityID from context if it was set by the handler (e.g. for POST requests)
-		if eid, exists := c.Get("entity_id"); exists {
-			if uuidVal, ok := eid.(uuid.UUID); ok {
-				entityID = uuidVal
-			}
-		}
+		requestID, _ := c.Get(RequestIDKey)
+		logData := fmt.Sprintf("Action: %s %s | Path: %s | RequestID: %s", actionDescription, entityType, path, requestID)
 
 		log := &domainAudit.AuditLog{
 			UserID:    userID,

@@ -11,7 +11,14 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 )
+
+// isUniqueViolation reports whether err is a PostgreSQL unique-constraint error.
+func isUniqueViolation(err error) bool {
+	var pqErr *pq.Error
+	return stdErrors.As(err, &pqErr) && pqErr.Code == "23505"
+}
 
 // UserDB represents the user record in the database.
 type UserDB struct {
@@ -79,22 +86,13 @@ func (r *userRepository) Create(ctx context.Context, u *user.User) error {
 	`
 	dbModel := fromUserEntity(u)
 	_, err := r.db.NamedExecContext(ctx, query, dbModel)
-	return err
-}
-
-func (r *userRepository) Get(ctx context.Context) ([]*user.User, error) {
-	var usersDB []UserDB
-	query := `SELECT * FROM users WHERE deleted_at IS NULL`
-	err := r.db.SelectContext(ctx, &usersDB, query)
 	if err != nil {
-		return nil, err
+		if isUniqueViolation(err) {
+			return errors.ErrConflict
+		}
+		return err
 	}
-
-	var users []*user.User
-	for _, uDB := range usersDB {
-		users = append(users, uDB.ToEntity())
-	}
-	return users, nil
+	return nil
 }
 
 func (r *userRepository) GetWithFilters(ctx context.Context, params user.FilterParams) ([]*user.User, int, error) {
@@ -169,21 +167,27 @@ func (r *userRepository) GetID(ctx context.Context, id uuid.UUID) (*user.User, e
 
 func (r *userRepository) Patch(ctx context.Context, u *user.User) error {
 	query := `
-		UPDATE users 
-		SET first_name=:first_name, 
-			last_name=:last_name, 
-			middle_name=:middle_name, 
-			phone=:phone, 
-			password=:password, 
-			role=:role, 
-			photo=:photo, 
-			is_active=:is_active, 
+		UPDATE users
+		SET first_name=:first_name,
+			last_name=:last_name,
+			middle_name=:middle_name,
+			phone=:phone,
+			password=:password,
+			role=:role,
+			photo=:photo,
+			is_active=:is_active,
 			updated_at=:updated_at
 		WHERE id=:id AND deleted_at IS NULL
 	`
 	dbModel := fromUserEntity(u)
 	_, err := r.db.NamedExecContext(ctx, query, dbModel)
-	return err
+	if err != nil {
+		if isUniqueViolation(err) {
+			return errors.ErrPhoneAlreadyExists
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *userRepository) Delete(ctx context.Context, id uuid.UUID) error {
