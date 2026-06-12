@@ -2,24 +2,17 @@
 FROM node:24-slim AS build
 WORKDIR /app
 
-# Enable pnpm
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10.33.2
 
-# Copy workspace config and package.json
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
-
-# Copy all source code
+COPY .npmrc pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY . .
 
-# Install dependencies and build
-RUN pnpm install --no-frozen-lockfile
-RUN PORT=3000 BASE_PATH=/ pnpm --filter @workspace/auth-dashboard build
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @workspace/auth-dashboard build
 
 # Production stage
 FROM nginx:alpine
-# Copy the built app
 COPY --from=build /app/artifacts/auth-dashboard/dist/public /usr/share/nginx/html
-# Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80

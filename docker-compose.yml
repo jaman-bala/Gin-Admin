@@ -36,7 +36,7 @@ services:
 
   db:
     container_name: db
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     environment:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
@@ -60,7 +60,7 @@ services:
     restart: always
     image: redis:alpine
     ports:
-      - "6312:6379"
+      - "6313:6379"
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     networks:

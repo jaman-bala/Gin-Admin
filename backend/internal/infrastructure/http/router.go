@@ -20,8 +20,10 @@ import (
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
+	scalar "github.com/MarceloPetrucio/go-scalar-api-reference"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"github.com/swaggo/swag"
 )
 
 // routeDeps holds initialized handlers and middleware needed for route registration.
@@ -97,6 +99,27 @@ func SetupRoutes(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 	server := gin.Default()
 
 	server.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	server.GET("/docs", func(c *gin.Context) {
+		specJSON, err := swag.ReadDoc()
+		if err != nil {
+			c.String(500, "failed to read swagger spec: %s", err.Error())
+			return
+		}
+		html, err := scalar.ApiReferenceHTML(&scalar.Options{
+			SpecContent: specJSON,
+			DarkMode:    true,
+			Theme:       scalar.ThemeDeepSpace,
+			CustomOptions: scalar.CustomOptions{
+				PageTitle: "AUTH SERVICE API",
+			},
+		})
+		if err != nil {
+			c.String(500, err.Error())
+			return
+		}
+		c.Header("Content-Type", "text/html")
+		c.String(200, html)
+	})
 
 	server.Use(middleware.RequestIDMiddleware())
 	server.Use(middleware.MetricsMiddleware())
