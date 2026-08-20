@@ -7,8 +7,6 @@ import (
 	"os"
 
 	"gin_auth_service/config"
-	_ "gin_auth_service/docs" // swagger documentation
-
 	"gin_auth_service/internal/pkg/hash"
 
 	"github.com/jmoiron/sqlx"
@@ -74,7 +72,7 @@ func createDefaultAdmin(db *sqlx.DB) {
 	const query = `
 		INSERT INTO users (phone, password, role, is_active)
 		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (phone) DO NOTHING
+		ON CONFLICT (phone) WHERE deleted_at IS NULL DO NOTHING
 	`
 	result, err := db.Exec(query, phone, hashedPassword, "superuser", true)
 	if err != nil {

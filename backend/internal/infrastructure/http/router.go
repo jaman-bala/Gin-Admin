@@ -1,6 +1,8 @@
 package http
 
 import (
+	"context"
+
 	"gin_auth_service/config"
 	"gin_auth_service/internal/application/analytics"
 	"gin_auth_service/internal/application/auditlog"
@@ -11,18 +13,19 @@ import (
 	"gin_auth_service/internal/infrastructure/http/handler"
 	"gin_auth_service/internal/infrastructure/http/middleware"
 	"gin_auth_service/internal/infrastructure/minio"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"gin_auth_service/internal/infrastructure/postgres"
 	"gin_auth_service/internal/infrastructure/redis"
 	"gin_auth_service/internal/pkg/jwt"
+	netpprof "net/http/pprof"
 	"strings"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
+	scalar "github.com/MarceloPetrucio/go-scalar-api-reference"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
-	scalar "github.com/MarceloPetrucio/go-scalar-api-reference"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 	"github.com/swaggo/swag"
 )
 
@@ -36,9 +39,10 @@ type routeDeps struct {
 
 	authMid           gin.HandlerFunc
 	auditMid          gin.HandlerFunc
-	blacklistMid      gin.HandlerFunc
 	adminMid          gin.HandlerFunc
 	loginRateLimitMid gin.HandlerFunc
+
+	auditRecorder *auditlog.AsyncRecorder
 }
 
 // buildDeps initializes all infrastructure, application services, and handlers.
@@ -75,6 +79,7 @@ func buildDeps(db *sqlx.DB, cfg *config.Config) *routeDeps {
 	fileSvc := file.NewUseCase(storage, cfg.Minio.MinioBucket)
 	tokenSvc := token.NewUseCase(redisCache, jwtService)
 	auditSvc := auditlog.NewUseCase(auditRepo)
+	auditRecorder := auditlog.NewAsyncRecorder(auditRepo, 4096, 256, time.Second)
 	analyticsSvc := analytics.NewUseCase(analyticsRepo)
 	userSvc := user.NewUseCase(userRepo, fileSvc)
 	authSvc := auth.NewUseCase(userRepo, tokenSvc, userSvc, cfg.JWT.Expiry, cfg.JWT.RefreshExpiry)
@@ -87,18 +92,20 @@ func buildDeps(db *sqlx.DB, cfg *config.Config) *routeDeps {
 		analyticsHdl: handler.NewAnalyticsHandler(analyticsSvc),
 
 		authMid:           middleware.AuthMiddleware(authSvc),
-		auditMid:          middleware.AuditMiddleware(auditSvc),
-		blacklistMid:      middleware.TokenBlacklistMiddleware(tokenSvc),
+		auditMid:          middleware.AuditMiddleware(auditRecorder),
 		adminMid:          middleware.RequireRoleLevelMiddleware(middleware.RoleLevelAdmin),
 		loginRateLimitMid: middleware.LoginRateLimitMiddleware(redisCache),
+
+		auditRecorder: auditRecorder,
 	}
 }
 
-// SetupRoutes initializes the Gin engine, wires all dependencies, and registers routes.
-func SetupRoutes(db *sqlx.DB, cfg *config.Config) *gin.Engine {
+// SetupRoutes initializes the Gin engine, wires all dependencies, and registers
+// routes. The returned shutdown function flushes background workers (audit
+// recorder) and must be called after the HTTP server has stopped.
+func SetupRoutes(db *sqlx.DB, cfg *config.Config) (*gin.Engine, func(context.Context) error) {
 	server := gin.Default()
 
-	server.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	server.GET("/docs", func(c *gin.Context) {
 		specJSON, err := swag.ReadDoc()
 		if err != nil {
@@ -109,9 +116,7 @@ func SetupRoutes(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 			SpecContent: specJSON,
 			DarkMode:    true,
 			Theme:       scalar.ThemeDeepSpace,
-			CustomOptions: scalar.CustomOptions{
-				PageTitle: "AUTH SERVICE API",
-			},
+			PageTitle:   "AUTH SERVICE API",
 		})
 		if err != nil {
 			c.String(500, err.Error())
@@ -124,20 +129,20 @@ func SetupRoutes(db *sqlx.DB, cfg *config.Config) *gin.Engine {
 	server.Use(middleware.RequestIDMiddleware())
 	server.Use(middleware.MetricsMiddleware())
 	server.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "http://localhost:8085"},
+		AllowOrigins:     cfg.Server.CORSOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", middleware.RequestIDHeader},
 		AllowCredentials: true,
 	}))
-	server.Use(middleware.SanitizeMiddleware())
+	server.Use(middleware.BodySizeLimit(cfg.Server.MaxBodyBytes))
 
-	server.GET("/metrics", gin.WrapH(promhttp.Handler()))
+	server.GET("/metrics", middleware.MetricsAuth(cfg.Server.MetricsToken), gin.WrapH(promhttp.Handler()))
 
 	deps := buildDeps(db, cfg)
 	server.GET("/health", deps.healthHdl.Check)
 	registerRoutes(server, deps)
 
-	return server
+	return server, deps.auditRecorder.Close
 }
 
 // registerRoutes declares all API routes. It has no infrastructure concerns —
@@ -151,11 +156,11 @@ func registerRoutes(server *gin.Engine, deps *routeDeps) {
 		authGroup.POST("/login", deps.loginRateLimitMid, deps.authHdl.Login)
 		authGroup.POST("/logout", deps.authHdl.Logout)
 		authGroup.POST("/refresh", deps.authHdl.Refresh)
-		authGroup.GET("/me", deps.blacklistMid, deps.authMid, deps.userHdl.GetMe)
+		authGroup.GET("/me", deps.authMid, deps.userHdl.GetMe)
 	}
 
 	users := api.Group("/users")
-	users.Use(deps.blacklistMid, deps.authMid, deps.auditMid)
+	users.Use(deps.authMid, deps.auditMid)
 	{
 		users.GET("/me", deps.userHdl.GetMe)
 		users.PUT("/me", deps.userHdl.UpdateMe)
@@ -176,8 +181,25 @@ func registerRoutes(server *gin.Engine, deps *routeDeps) {
 	}
 
 	auditGroup := api.Group("/audit")
-	auditGroup.Use(deps.blacklistMid, deps.authMid, deps.adminMid, deps.auditMid)
+	auditGroup.Use(deps.authMid, deps.adminMid, deps.auditMid)
 	{
 		auditGroup.GET("", deps.auditHdl.GetAllLogs)
+	}
+
+	// Runtime profiling (net/http/pprof), admin-only. Includes the
+	// goroutineleak profile introduced in Go 1.27 for detecting
+	// permanently blocked goroutines.
+	debug := server.Group("/debug/pprof")
+	debug.Use(deps.authMid, deps.adminMid)
+	{
+		debug.GET("/", gin.WrapF(netpprof.Index))
+		debug.GET("/cmdline", gin.WrapF(netpprof.Cmdline))
+		debug.GET("/profile", gin.WrapF(netpprof.Profile))
+		debug.GET("/symbol", gin.WrapF(netpprof.Symbol))
+		debug.POST("/symbol", gin.WrapF(netpprof.Symbol))
+		debug.GET("/trace", gin.WrapF(netpprof.Trace))
+		for _, p := range []string{"allocs", "block", "goroutine", "goroutineleak", "heap", "mutex", "threadcreate"} {
+			debug.GET("/"+p, gin.WrapH(netpprof.Handler(p)))
+		}
 	}
 }

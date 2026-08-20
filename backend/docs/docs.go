@@ -29,7 +29,37 @@ const docTemplate = `{
                     "audit"
                 ],
                 "summary": "Get all user actions",
-                "responses": {}
+                "operationId": "getAuditLogs",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "default": 1,
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "default": 10,
+                        "description": "Items per page",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by entity ID",
+                        "name": "entity_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auditlog.AuditLogListResponse"
+                        }
+                    }
+                }
             }
         },
         "/api/v1/auth/login": {
@@ -44,6 +74,7 @@ const docTemplate = `{
                     "auth"
                 ],
                 "summary": "Login user",
+                "operationId": "authLogin",
                 "parameters": [
                     {
                         "description": "Login credentials",
@@ -55,7 +86,23 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.LoginResponseDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/api/v1/auth/logout": {
@@ -72,6 +119,7 @@ const docTemplate = `{
                     "auth"
                 ],
                 "summary": "Logout user",
+                "operationId": "authLogout",
                 "parameters": [
                     {
                         "description": "Optional refresh token to invalidate",
@@ -82,7 +130,17 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/api/v1/auth/refresh": {
@@ -97,6 +155,7 @@ const docTemplate = `{
                     "auth"
                 ],
                 "summary": "Refresh access token",
+                "operationId": "authRefresh",
                 "parameters": [
                     {
                         "description": "Refresh token",
@@ -108,7 +167,23 @@ const docTemplate = `{
                         }
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/auth.LoginResponseDTO"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         },
         "/api/v1/users": {
@@ -125,6 +200,7 @@ const docTemplate = `{
                     "users"
                 ],
                 "summary": "Get all users with pagination",
+                "operationId": "listUsers",
                 "parameters": [
                     {
                         "type": "integer",
@@ -169,7 +245,7 @@ const docTemplate = `{
                     }
                 ],
                 "consumes": [
-                    "multipart/form-data"
+                    "application/json"
                 ],
                 "produces": [
                     "application/json"
@@ -178,7 +254,26 @@ const docTemplate = `{
                     "users"
                 ],
                 "summary": "Create user (admin only)",
-                "responses": {}
+                "operationId": "createUser",
+                "parameters": [
+                    {
+                        "description": "User data",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/user.UserRequestDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/user.UserResponseDTO"
+                        }
+                    }
+                }
             }
         },
         "/api/v1/users/me": {
@@ -195,6 +290,7 @@ const docTemplate = `{
                     "users"
                 ],
                 "summary": "Get current user profile",
+                "operationId": "getMe",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -211,7 +307,7 @@ const docTemplate = `{
                     }
                 ],
                 "consumes": [
-                    "multipart/form-data"
+                    "application/json"
                 ],
                 "produces": [
                     "application/json"
@@ -220,7 +316,26 @@ const docTemplate = `{
                     "users"
                 ],
                 "summary": "Update own profile",
-                "responses": {}
+                "operationId": "updateMe",
+                "parameters": [
+                    {
+                        "description": "Fields to update",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/user.UserSelfUpdateDTO"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.UserResponseDTO"
+                        }
+                    }
+                }
             }
         },
         "/api/v1/users/phone/{phone}": {
@@ -237,6 +352,7 @@ const docTemplate = `{
                     "users"
                 ],
                 "summary": "Get user by phone",
+                "operationId": "getUserByPhone",
                 "parameters": [
                     {
                         "type": "string",
@@ -246,7 +362,14 @@ const docTemplate = `{
                         "required": true
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.UserResponseDTO"
+                        }
+                    }
+                }
             }
         },
         "/api/v1/users/stats": {
@@ -263,6 +386,7 @@ const docTemplate = `{
                     "analytics"
                 ],
                 "summary": "Get user statistics",
+                "operationId": "getUserStats",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -287,6 +411,7 @@ const docTemplate = `{
                     "users"
                 ],
                 "summary": "Get user by ID",
+                "operationId": "getUser",
                 "parameters": [
                     {
                         "type": "string",
@@ -296,7 +421,14 @@ const docTemplate = `{
                         "required": true
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.UserResponseDTO"
+                        }
+                    }
+                }
             },
             "delete": {
                 "security": [
@@ -308,6 +440,7 @@ const docTemplate = `{
                     "users"
                 ],
                 "summary": "Delete user (admin only)",
+                "operationId": "deleteUser",
                 "parameters": [
                     {
                         "type": "string",
@@ -317,7 +450,17 @@ const docTemplate = `{
                         "required": true
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             },
             "patch": {
                 "security": [
@@ -326,7 +469,7 @@ const docTemplate = `{
                     }
                 ],
                 "consumes": [
-                    "multipart/form-data"
+                    "application/json"
                 ],
                 "produces": [
                     "application/json"
@@ -335,6 +478,7 @@ const docTemplate = `{
                     "users"
                 ],
                 "summary": "Update user (admin only)",
+                "operationId": "updateUser",
                 "parameters": [
                     {
                         "type": "string",
@@ -342,9 +486,25 @@ const docTemplate = `{
                         "name": "id",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "description": "Fields to update",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/user.UserUpdateDTO"
+                        }
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/user.UserResponseDTO"
+                        }
+                    }
+                }
             }
         },
         "/health": {
@@ -356,6 +516,7 @@ const docTemplate = `{
                     "health"
                 ],
                 "summary": "Health check",
+                "operationId": "healthCheck",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -401,6 +562,61 @@ const docTemplate = `{
                 }
             }
         },
+        "auditlog.AuditLogListResponse": {
+            "type": "object",
+            "properties": {
+                "limit": {
+                    "type": "integer"
+                },
+                "logs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/auditlog.ResponseDTO"
+                    }
+                },
+                "page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                }
+            }
+        },
+        "auditlog.ResponseDTO": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "client_ip": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "entity": {
+                    "type": "string"
+                },
+                "entity_id": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "integer"
+                },
+                "user_agent": {
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "string"
+                }
+            }
+        },
         "auth.LoginRequestDTO": {
             "type": "object",
             "required": [
@@ -415,6 +631,20 @@ const docTemplate = `{
                 "phone": {
                     "type": "string",
                     "example": "+996500500500"
+                }
+            }
+        },
+        "auth.LoginResponseDTO": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
                 }
             }
         },
@@ -468,6 +698,38 @@ const docTemplate = `{
                 }
             }
         },
+        "user.UserRequestDTO": {
+            "type": "object",
+            "required": [
+                "password",
+                "phone"
+            ],
+            "properties": {
+                "first_name": {
+                    "type": "string"
+                },
+                "last_name": {
+                    "type": "string"
+                },
+                "middle_name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string",
+                    "example": "Password123"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+996500500500"
+                },
+                "role": {
+                    "$ref": "#/definitions/user.Role"
+                },
+                "telegram": {
+                    "type": "string"
+                }
+            }
+        },
         "user.UserResponseDTO": {
             "type": "object",
             "properties": {
@@ -501,7 +763,64 @@ const docTemplate = `{
                 "role": {
                     "$ref": "#/definitions/user.Role"
                 },
+                "telegram": {
+                    "type": "string"
+                },
                 "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "user.UserSelfUpdateDTO": {
+            "type": "object",
+            "properties": {
+                "first_name": {
+                    "type": "string"
+                },
+                "last_name": {
+                    "type": "string"
+                },
+                "middle_name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+996500500500"
+                },
+                "telegram": {
+                    "type": "string"
+                }
+            }
+        },
+        "user.UserUpdateDTO": {
+            "type": "object",
+            "properties": {
+                "first_name": {
+                    "type": "string"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "last_name": {
+                    "type": "string"
+                },
+                "middle_name": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "phone": {
+                    "type": "string",
+                    "example": "+996500500500"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "telegram": {
                     "type": "string"
                 }
             }

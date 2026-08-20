@@ -3,7 +3,7 @@ package user
 import (
 	"context"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // FilterParams holds pagination and filter options for user queries.

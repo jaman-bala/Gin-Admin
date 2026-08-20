@@ -2,11 +2,10 @@ package postgres
 
 import (
 	"context"
-	"fmt"
 	"gin_auth_service/internal/domain/auditlog"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -55,12 +54,12 @@ func fromAuditLogEntity(e *auditlog.AuditLog) *AuditLogDB {
 }
 
 type auditRepository struct {
-	db *sqlx.DB
+	base
 }
 
 // NewAuditRepository creates a new instance of AuditRepository.
 func NewAuditRepository(db *sqlx.DB) auditlog.Repository {
-	return &auditRepository{db: db}
+	return &auditRepository{base{db: db}}
 }
 
 func (r *auditRepository) Create(ctx context.Context, log *auditlog.AuditLog) error {
@@ -69,88 +68,69 @@ func (r *auditRepository) Create(ctx context.Context, log *auditlog.AuditLog) er
 		VALUES (:user_id, :action, :entity, :entity_id, :client_ip, :user_agent, :data, :status, :created_at)
 	`
 	dbModel := fromAuditLogEntity(log)
-	_, err := r.db.NamedExecContext(ctx, query, dbModel)
+	_, err := sqlx.NamedExecContext(ctx, r.q(ctx), query, dbModel)
+	return err
+}
+
+// CreateBatch inserts multiple audit entries in a single multi-row statement.
+// Used by the async recorder to keep audit writes off the request hot path.
+func (r *auditRepository) CreateBatch(ctx context.Context, logs []auditlog.AuditLog) error {
+	if len(logs) == 0 {
+		return nil
+	}
+	rows := make([]AuditLogDB, 0, len(logs))
+	for i := range logs {
+		rows = append(rows, *fromAuditLogEntity(&logs[i]))
+	}
+	query := `
+		INSERT INTO audit_logs (user_id, action, entity, entity_id, client_ip, user_agent, data, status, created_at)
+		VALUES (:user_id, :action, :entity, :entity_id, :client_ip, :user_agent, :data, :status, :created_at)
+	`
+	_, err := sqlx.NamedExecContext(ctx, r.q(ctx), query, rows)
 	return err
 }
 
 func (r *auditRepository) GetAll(ctx context.Context) ([]auditlog.AuditLog, error) {
 	var logsDB []AuditLogDB
 	query := `SELECT * FROM audit_logs ORDER BY created_at DESC`
-	err := r.db.SelectContext(ctx, &logsDB, query)
+	err := sqlx.SelectContext(ctx, r.q(ctx), &logsDB, query)
 	if err != nil {
 		return nil, err
 	}
-
-	var logs []auditlog.AuditLog
-	for _, lDB := range logsDB {
-		logs = append(logs, lDB.ToEntity())
-	}
-	return logs, nil
+	return mapSlice(logsDB, (*AuditLogDB).ToEntity), nil
 }
 
 func (r *auditRepository) GetAllPaginated(ctx context.Context, page, limit int, entityID *uuid.UUID) ([]auditlog.AuditLog, int64, error) {
-	var logsDB []AuditLogDB
-	var total int64
-
 	where := ""
-	var args []interface{}
+	var args []any
 	if entityID != nil {
 		where = " WHERE entity_id = $1"
-		args = append(args, entityID)
+		args = append(args, *entityID)
 	}
 
-	// Count total records
-	countQuery := `SELECT COUNT(*) FROM audit_logs` + where
-	err := r.db.GetContext(ctx, &total, countQuery, args...)
+	logsDB, total, err := r.selectPage[AuditLogDB](ctx, "audit_logs", where, "created_at DESC", page, limit, args...)
 	if err != nil {
 		return nil, 0, err
 	}
-
-	// Get paginated records
-	offset := (page - 1) * limit
-	limitIdx := len(args) + 1
-	offsetIdx := len(args) + 2
-	query := `SELECT * FROM audit_logs` + where + fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", limitIdx, offsetIdx)
-	
-	args = append(args, limit, offset)
-	err = r.db.SelectContext(ctx, &logsDB, query, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	var logs []auditlog.AuditLog
-	for _, lDB := range logsDB {
-		logs = append(logs, lDB.ToEntity())
-	}
-	return logs, total, nil
+	return mapSlice(logsDB, (*AuditLogDB).ToEntity), total, nil
 }
 
 func (r *auditRepository) GetByUserID(ctx context.Context, userID uuid.UUID) ([]auditlog.AuditLog, error) {
 	var logsDB []AuditLogDB
 	query := `SELECT * FROM audit_logs WHERE user_id = $1 ORDER BY created_at DESC`
-	err := r.db.SelectContext(ctx, &logsDB, query, userID)
+	err := sqlx.SelectContext(ctx, r.q(ctx), &logsDB, query, userID)
 	if err != nil {
 		return nil, err
 	}
-
-	var logs []auditlog.AuditLog
-	for _, lDB := range logsDB {
-		logs = append(logs, lDB.ToEntity())
-	}
-	return logs, nil
+	return mapSlice(logsDB, (*AuditLogDB).ToEntity), nil
 }
 
 func (r *auditRepository) GetByEntity(ctx context.Context, entity string) ([]auditlog.AuditLog, error) {
 	var logsDB []AuditLogDB
 	query := `SELECT * FROM audit_logs WHERE entity = $1 ORDER BY created_at DESC`
-	err := r.db.SelectContext(ctx, &logsDB, query, entity)
+	err := sqlx.SelectContext(ctx, r.q(ctx), &logsDB, query, entity)
 	if err != nil {
 		return nil, err
 	}
-
-	var logs []auditlog.AuditLog
-	for _, lDB := range logsDB {
-		logs = append(logs, lDB.ToEntity())
-	}
-	return logs, nil
+	return mapSlice(logsDB, (*AuditLogDB).ToEntity), nil
 }

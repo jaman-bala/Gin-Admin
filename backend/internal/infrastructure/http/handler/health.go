@@ -27,6 +27,7 @@ func NewHealthHandler(db *sqlx.DB, redis, storage Pinger) *HealthHandler {
 
 // Check godoc
 // @Summary Health check
+// @ID healthCheck
 // @Tags health
 // @Produce json
 // @Success 200 {object} map[string]interface{}

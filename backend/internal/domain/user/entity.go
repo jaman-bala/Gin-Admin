@@ -4,7 +4,7 @@ import (
 	"gin_auth_service/internal/pkg/hash"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // Role defines the role of a user.
@@ -24,8 +24,9 @@ type User struct {
 	MiddleName string
 	Phone      string
 	Password   string
-	Role       Role
-	Photo      string
+	Role     Role
+	Photo    string
+	Telegram string
 
 	IsActive bool
 

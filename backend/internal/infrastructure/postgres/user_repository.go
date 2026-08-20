@@ -9,7 +9,7 @@ import (
 	"gin_auth_service/pkg/errors"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 	"github.com/jmoiron/sqlx"
 	"github.com/lib/pq"
 )
@@ -30,6 +30,7 @@ type UserDB struct {
 	Password   string     `db:"password"`
 	Role       string     `db:"role"`
 	Photo      string     `db:"photo"`
+	Telegram   string     `db:"telegram"`
 	IsActive   bool       `db:"is_active"`
 	CreatedAt  time.Time  `db:"created_at"`
 	UpdatedAt  time.Time  `db:"updated_at"`
@@ -46,6 +47,7 @@ func (m *UserDB) ToEntity() *user.User {
 		Password:   m.Password,
 		Role:       user.Role(m.Role),
 		Photo:      m.Photo,
+		Telegram:   m.Telegram,
 		IsActive:   m.IsActive,
 		CreatedAt:  m.CreatedAt,
 		UpdatedAt:  m.UpdatedAt,
@@ -63,6 +65,7 @@ func fromUserEntity(e *user.User) *UserDB {
 		Password:   e.Password,
 		Role:       string(e.Role),
 		Photo:      e.Photo,
+		Telegram:   e.Telegram,
 		IsActive:   e.IsActive,
 		CreatedAt:  e.CreatedAt,
 		UpdatedAt:  e.UpdatedAt,
@@ -71,21 +74,21 @@ func fromUserEntity(e *user.User) *UserDB {
 }
 
 type userRepository struct {
-	db *sqlx.DB
+	base
 }
 
 // NewUserRepository creates a new instance of UserRepository.
 func NewUserRepository(db *sqlx.DB) user.Repository {
-	return &userRepository{db: db}
+	return &userRepository{base{db: db}}
 }
 
 func (r *userRepository) Create(ctx context.Context, u *user.User) error {
 	query := `
-		INSERT INTO users (id, first_name, last_name, middle_name, phone, password, role, photo, is_active, created_at, updated_at)
-		VALUES (:id, :first_name, :last_name, :middle_name, :phone, :password, :role, :photo, :is_active, :created_at, :updated_at)
+		INSERT INTO users (id, first_name, last_name, middle_name, phone, password, role, photo, telegram, is_active, created_at, updated_at)
+		VALUES (:id, :first_name, :last_name, :middle_name, :phone, :password, :role, :photo, :telegram, :is_active, :created_at, :updated_at)
 	`
 	dbModel := fromUserEntity(u)
-	_, err := r.db.NamedExecContext(ctx, query, dbModel)
+	_, err := sqlx.NamedExecContext(ctx, r.q(ctx), query, dbModel)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return errors.ErrConflict
@@ -96,17 +99,9 @@ func (r *userRepository) Create(ctx context.Context, u *user.User) error {
 }
 
 func (r *userRepository) GetWithFilters(ctx context.Context, params user.FilterParams) ([]*user.User, int, error) {
-	if params.Page < 1 {
-		params.Page = 1
-	}
-	if params.Limit < 1 {
-		params.Limit = 10
-	}
-	offset := (params.Page - 1) * params.Limit
-
 	// Build dynamic WHERE clause
-	where := "WHERE deleted_at IS NULL"
-	args := []interface{}{}
+	where := " WHERE deleted_at IS NULL"
+	args := []any{}
 	argIdx := 1
 
 	if params.Search != "" {
@@ -122,40 +117,19 @@ func (r *userRepository) GetWithFilters(ctx context.Context, params user.FilterP
 	if params.IsActive != nil {
 		where += ` AND is_active = $` + fmt.Sprintf("%d", argIdx)
 		args = append(args, *params.IsActive)
-		argIdx++
 	}
 
-	// Count total
-	var total int
-	countQuery := `SELECT COUNT(*) FROM users ` + where
-	if err := r.db.GetContext(ctx, &total, countQuery, args...); err != nil {
+	usersDB, total, err := r.selectPage[UserDB](ctx, "users", where, "created_at DESC", params.Page, params.Limit, args...)
+	if err != nil {
 		return nil, 0, err
 	}
-
-	// Fetch paginated
-	dataArgs := append(args, params.Limit, offset)
-	dataQuery := `SELECT * FROM users ` + where +
-		` ORDER BY created_at DESC` +
-		` LIMIT $` + fmt.Sprintf("%d", argIdx) +
-		` OFFSET $` + fmt.Sprintf("%d", argIdx+1)
-
-	var usersDB []UserDB
-	if err := r.db.SelectContext(ctx, &usersDB, dataQuery, dataArgs...); err != nil {
-		return nil, 0, err
-	}
-
-	var result []*user.User
-	for _, uDB := range usersDB {
-		result = append(result, uDB.ToEntity())
-	}
-	return result, total, nil
+	return mapSlice(usersDB, (*UserDB).ToEntity), int(total), nil
 }
-
 
 func (r *userRepository) GetID(ctx context.Context, id uuid.UUID) (*user.User, error) {
 	var uDB UserDB
 	query := `SELECT * FROM users WHERE id = $1 AND deleted_at IS NULL`
-	err := r.db.GetContext(ctx, &uDB, query, id)
+	err := sqlx.GetContext(ctx, r.q(ctx), &uDB, query, id)
 	if err != nil {
 		if stdErrors.Is(err, sql.ErrNoRows) {
 			return nil, errors.ErrUserNotFound
@@ -175,12 +149,13 @@ func (r *userRepository) Patch(ctx context.Context, u *user.User) error {
 			password=:password,
 			role=:role,
 			photo=:photo,
+			telegram=:telegram,
 			is_active=:is_active,
 			updated_at=:updated_at
 		WHERE id=:id AND deleted_at IS NULL
 	`
 	dbModel := fromUserEntity(u)
-	_, err := r.db.NamedExecContext(ctx, query, dbModel)
+	_, err := sqlx.NamedExecContext(ctx, r.q(ctx), query, dbModel)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return errors.ErrPhoneAlreadyExists
@@ -192,14 +167,14 @@ func (r *userRepository) Patch(ctx context.Context, u *user.User) error {
 
 func (r *userRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	query := `UPDATE users SET deleted_at = NOW() WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
+	_, err := r.q(ctx).ExecContext(ctx, query, id)
 	return err
 }
 
 func (r *userRepository) FindByPhone(ctx context.Context, phone string) (*user.User, error) {
 	var uDB UserDB
 	query := `SELECT * FROM users WHERE phone = $1 AND deleted_at IS NULL`
-	err := r.db.GetContext(ctx, &uDB, query, phone)
+	err := sqlx.GetContext(ctx, r.q(ctx), &uDB, query, phone)
 	if err != nil {
 		if stdErrors.Is(err, sql.ErrNoRows) {
 			return nil, errors.ErrUserNotFound

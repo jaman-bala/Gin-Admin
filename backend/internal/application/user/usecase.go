@@ -11,7 +11,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 type usecase struct {
@@ -60,7 +60,7 @@ func (uc *usecase) Create(ctx context.Context, req UserRequestDTO, photo *file.F
 	}
 
 	u := &domainUser.User{
-		ID:         uuid.Must(uuid.NewV7()),
+		ID:         uuid.NewV7(),
 		FirstName:  req.FirstName,
 		LastName:   req.LastName,
 		MiddleName: req.MiddleName,
@@ -129,7 +129,7 @@ func (uc *usecase) GetMe(ctx context.Context, id uuid.UUID) (*UserResponseDTO, e
 // PatchSelf updates the caller's own profile. Role and IsActive are excluded
 // from req — users cannot escalate their own privileges.
 func (uc *usecase) PatchSelf(ctx context.Context, id uuid.UUID, req UserSelfUpdateDTO, photo *file.FileUpload) (*UserResponseDTO, error) {
-	if id == uuid.Nil {
+	if id == uuid.Nil() {
 		return nil, errors.ErrInvalidUUID
 	}
 
@@ -146,6 +146,10 @@ func (uc *usecase) PatchSelf(ctx context.Context, id uuid.UUID, req UserSelfUpda
 	req.ApplyToModel(u)
 
 	if req.Password != nil && *req.Password != "" {
+		// A valid access token alone must not allow a password change.
+		if req.CurrentPassword == nil || u.CheckPassword(*req.CurrentPassword) != nil {
+			return nil, errors.ErrInvalidCredentials
+		}
 		hashed, err := hash.HashPassword(*req.Password)
 		if err != nil {
 			return nil, fmt.Errorf("error hashing password: %w", err)
@@ -174,7 +178,7 @@ func (uc *usecase) PatchSelf(ctx context.Context, id uuid.UUID, req UserSelfUpda
 
 // Patch is the admin-only update; it allows changing Role and IsActive.
 func (uc *usecase) Patch(ctx context.Context, id uuid.UUID, req UserUpdateDTO, photo *file.FileUpload) (*UserResponseDTO, error) {
-	if id == uuid.Nil {
+	if id == uuid.Nil() {
 		return nil, errors.ErrInvalidUUID
 	}
 
@@ -218,7 +222,7 @@ func (uc *usecase) Patch(ctx context.Context, id uuid.UUID, req UserUpdateDTO, p
 }
 
 func (uc *usecase) Delete(ctx context.Context, id uuid.UUID) error {
-	if id == uuid.Nil {
+	if id == uuid.Nil() {
 		return errors.ErrInvalidUUID
 	}
 	return uc.repo.Delete(ctx, id)

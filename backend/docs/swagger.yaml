@@ -17,6 +17,42 @@ definitions:
         format: int64
         type: integer
     type: object
+  auditlog.AuditLogListResponse:
+    properties:
+      limit:
+        type: integer
+      logs:
+        items:
+          $ref: '#/definitions/auditlog.ResponseDTO'
+        type: array
+      page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  auditlog.ResponseDTO:
+    properties:
+      action:
+        type: string
+      client_ip:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      entity:
+        type: string
+      entity_id:
+        type: string
+      id:
+        type: integer
+      status:
+        type: integer
+      user_agent:
+        type: string
+      user_id:
+        type: string
+    type: object
   auth.LoginRequestDTO:
     properties:
       password:
@@ -28,6 +64,15 @@ definitions:
     required:
     - password
     - phone
+    type: object
+  auth.LoginResponseDTO:
+    properties:
+      access_token:
+        type: string
+      message:
+        type: string
+      refresh_token:
+        type: string
     type: object
   auth.LogoutRequestDTO:
     properties:
@@ -63,6 +108,28 @@ definitions:
           $ref: '#/definitions/user.UserResponseDTO'
         type: array
     type: object
+  user.UserRequestDTO:
+    properties:
+      first_name:
+        type: string
+      last_name:
+        type: string
+      middle_name:
+        type: string
+      password:
+        example: Password123
+        type: string
+      phone:
+        example: "+996500500500"
+        type: string
+      role:
+        $ref: '#/definitions/user.Role'
+      telegram:
+        type: string
+    required:
+    - password
+    - phone
+    type: object
   user.UserResponseDTO:
     properties:
       created_at:
@@ -85,7 +152,45 @@ definitions:
         type: string
       role:
         $ref: '#/definitions/user.Role'
+      telegram:
+        type: string
       updated_at:
+        type: string
+    type: object
+  user.UserSelfUpdateDTO:
+    properties:
+      first_name:
+        type: string
+      last_name:
+        type: string
+      middle_name:
+        type: string
+      password:
+        type: string
+      phone:
+        example: "+996500500500"
+        type: string
+      telegram:
+        type: string
+    type: object
+  user.UserUpdateDTO:
+    properties:
+      first_name:
+        type: string
+      is_active:
+        type: boolean
+      last_name:
+        type: string
+      middle_name:
+        type: string
+      password:
+        type: string
+      phone:
+        example: "+996500500500"
+        type: string
+      role:
+        type: string
+      telegram:
         type: string
     type: object
 host: localhost:8082
@@ -97,9 +202,29 @@ info:
 paths:
   /api/v1/audit:
     get:
+      operationId: getAuditLogs
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      - description: Filter by entity ID
+        in: query
+        name: entity_id
+        type: string
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auditlog.AuditLogListResponse'
       security:
       - BearerAuth: []
       summary: Get all user actions
@@ -109,6 +234,7 @@ paths:
     post:
       consumes:
       - application/json
+      operationId: authLogin
       parameters:
       - description: Login credentials
         in: body
@@ -118,7 +244,17 @@ paths:
           $ref: '#/definitions/auth.LoginRequestDTO'
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.LoginResponseDTO'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       summary: Login user
       tags:
       - auth
@@ -126,13 +262,20 @@ paths:
     post:
       consumes:
       - application/json
+      operationId: authLogout
       parameters:
       - description: Optional refresh token to invalidate
         in: body
         name: body
         schema:
           $ref: '#/definitions/auth.LogoutRequestDTO'
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerAuth: []
       summary: Logout user
@@ -142,6 +285,7 @@ paths:
     post:
       consumes:
       - application/json
+      operationId: authRefresh
       parameters:
       - description: Refresh token
         in: body
@@ -151,12 +295,23 @@ paths:
           $ref: '#/definitions/auth.RefreshTokenRequest'
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/auth.LoginResponseDTO'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       summary: Refresh access token
       tags:
       - auth
   /api/v1/users:
     get:
+      operationId: listUsers
       parameters:
       - default: 1
         description: Page number
@@ -190,10 +345,22 @@ paths:
       - users
     post:
       consumes:
-      - multipart/form-data
+      - application/json
+      operationId: createUser
+      parameters:
+      - description: User data
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/user.UserRequestDTO'
       produces:
       - application/json
-      responses: {}
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/user.UserResponseDTO'
       security:
       - BearerAuth: []
       summary: Create user (admin only)
@@ -201,19 +368,27 @@ paths:
       - users
   /api/v1/users/{id}:
     delete:
+      operationId: deleteUser
       parameters:
       - description: User ID
         in: path
         name: id
         required: true
         type: string
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
       security:
       - BearerAuth: []
       summary: Delete user (admin only)
       tags:
       - users
     get:
+      operationId: getUser
       parameters:
       - description: User ID
         in: path
@@ -222,7 +397,11 @@ paths:
         type: string
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserResponseDTO'
       security:
       - BearerAuth: []
       summary: Get user by ID
@@ -230,16 +409,27 @@ paths:
       - users
     patch:
       consumes:
-      - multipart/form-data
+      - application/json
+      operationId: updateUser
       parameters:
       - description: User ID
         in: path
         name: id
         required: true
         type: string
+      - description: Fields to update
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/user.UserUpdateDTO'
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserResponseDTO'
       security:
       - BearerAuth: []
       summary: Update user (admin only)
@@ -247,6 +437,7 @@ paths:
       - users
   /api/v1/users/me:
     get:
+      operationId: getMe
       produces:
       - application/json
       responses:
@@ -261,10 +452,22 @@ paths:
       - users
     put:
       consumes:
-      - multipart/form-data
+      - application/json
+      operationId: updateMe
+      parameters:
+      - description: Fields to update
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/user.UserSelfUpdateDTO'
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserResponseDTO'
       security:
       - BearerAuth: []
       summary: Update own profile
@@ -272,6 +475,7 @@ paths:
       - users
   /api/v1/users/phone/{phone}:
     get:
+      operationId: getUserByPhone
       parameters:
       - description: User phone
         in: path
@@ -280,7 +484,11 @@ paths:
         type: string
       produces:
       - application/json
-      responses: {}
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/user.UserResponseDTO'
       security:
       - BearerAuth: []
       summary: Get user by phone
@@ -288,6 +496,7 @@ paths:
       - users
   /api/v1/users/stats:
     get:
+      operationId: getUserStats
       produces:
       - application/json
       responses:
@@ -302,6 +511,7 @@ paths:
       - analytics
   /health:
     get:
+      operationId: healthCheck
       produces:
       - application/json
       responses:

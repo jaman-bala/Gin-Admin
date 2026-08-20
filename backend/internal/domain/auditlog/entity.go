@@ -3,7 +3,7 @@ package auditlog
 import (
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // AuditLog represents a single entry in the audit trail.

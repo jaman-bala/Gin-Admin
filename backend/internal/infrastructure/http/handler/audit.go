@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // AuditHandler handles audit log HTTP requests.
@@ -23,9 +23,14 @@ func NewAuditHandler(usecase auditlog.UseCase) *AuditHandler {
 
 // GetAllLogs godoc
 // @Summary Get all user actions
+// @ID getAuditLogs
 // @Tags audit
 // @Security BearerAuth
 // @Produce json
+// @Param page query int false "Page number" default(1)
+// @Param limit query int false "Items per page" default(10)
+// @Param entity_id query string false "Filter by entity ID"
+// @Success 200 {object} auditlog.AuditLogListResponse
 // @Router /api/v1/audit [get]
 func (h *AuditHandler) GetAllLogs(c *gin.Context) {
 	ctx := c.Request.Context()

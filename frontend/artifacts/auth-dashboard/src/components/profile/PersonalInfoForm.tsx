@@ -19,6 +19,7 @@ const profileSchema = z.object({
   first_name: z.string().min(1, "first_name_required"),
   last_name: z.string().min(1, "last_name_required"),
   middle_name: z.string().optional(),
+  telegram: z.string().optional(),
 });
 
 export function PersonalInfoForm({ user, isPending, hasPhoto, onSubmit }: PersonalInfoFormProps) {
@@ -30,6 +31,7 @@ export function PersonalInfoForm({ user, isPending, hasPhoto, onSubmit }: Person
       first_name: user?.first_name || "",
       last_name: user?.last_name || "",
       middle_name: user?.middle_name || "",
+      telegram: user?.telegram || "",
     }
   });
 
@@ -62,6 +64,13 @@ export function PersonalInfoForm({ user, isPending, hasPhoto, onSubmit }: Person
               <FormItem>
                 <FormLabel>{t.auth.middle_name} <span className="text-muted-foreground font-normal">({t.common.optional})</span></FormLabel>
                 <FormControl><Input {...field} disabled={isPending} /></FormControl>
+                <FormMessage />
+              </FormItem>
+            )} />
+            <FormField control={form.control} name="telegram" render={({ field }) => (
+              <FormItem>
+                <FormLabel>{t.auth.telegram} <span className="text-muted-foreground font-normal">({t.common.optional})</span></FormLabel>
+                <FormControl><Input placeholder={t.auth.telegram_placeholder} {...field} disabled={isPending} /></FormControl>
                 <FormMessage />
               </FormItem>
             )} />

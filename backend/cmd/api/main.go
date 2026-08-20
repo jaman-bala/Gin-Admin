@@ -39,8 +39,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Connect to Database
-	db, err := postgres.InitDB(cfg, true)
+	// Connect to Database. Migrations run here only when RUN_MIGRATIONS=true
+	// (single-instance/dev convenience); in multi-replica deployments run
+	// cmd/migrate as a separate deploy step instead.
+	db, err := postgres.InitDB(cfg, cfg.Server.RunMigrations)
 	if err != nil {
 		slog.Error("Error connecting to database", "error", err)
 		os.Exit(1)
@@ -54,11 +56,15 @@ func main() {
 	validator.InitCustomValidators()
 
 	// Setup HTTP routing
-	router := infraHttp.SetupRoutes(db, cfg)
+	router, stopWorkers := infraHttp.SetupRoutes(db, cfg)
 
 	srv := &http.Server{
-		Addr:    ":" + cfg.Server.Port,
-		Handler: router,
+		Addr:              ":" + cfg.Server.Port,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       cfg.Server.ReadTimeout,
+		WriteTimeout:      cfg.Server.WriteTimeout,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	// Run server in a goroutine
@@ -78,13 +84,18 @@ func main() {
 	<-quit
 	slog.Info("Shutting down server gracefully...")
 
-	// The context is used to inform the server it has 5 seconds to finish
-	// the request it is currently handling
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// Give in-flight requests time to finish before forcing the shutdown.
+	ctx, cancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
 		slog.Error("Server forced to shutdown", "error", err)
+	}
+
+	// Flush background workers (audit recorder) after the server stopped
+	// accepting requests.
+	if err := stopWorkers(ctx); err != nil {
+		slog.Error("Failed to flush background workers", "error", err)
 	}
 
 	slog.Info("Server exiting")

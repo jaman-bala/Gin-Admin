@@ -7,8 +7,8 @@ import (
 	"gin_auth_service/internal/pkg/jwt"
 	"time"
 
-	jwtv4 "github.com/golang-jwt/jwt/v4"
-	"github.com/google/uuid"
+	jwtlib "github.com/golang-jwt/jwt/v5"
+	"uuid"
 )
 
 type usecase struct {
@@ -32,7 +32,7 @@ func (uc *usecase) GenerateTokenPair(_ context.Context, userID, role string, isA
 			"is_active": isActive,
 			"exp":       expiry.Unix(),
 			"type":      tokenType,
-			"jti":       uuid.Must(uuid.NewV7()).String(),
+			"jti":       uuid.NewV7().String(),
 			"iat":       now.Unix(),
 		})
 	}
@@ -56,12 +56,12 @@ func (uc *usecase) GenerateTokenPair(_ context.Context, userID, role string, isA
 // jtiFromToken extracts the jti claim from a JWT without verifying the signature.
 // Used only for blacklist key lookup; full verification is done by the caller.
 func jtiFromToken(tokenString string) (string, error) {
-	p := jwtv4.NewParser()
-	t, _, err := p.ParseUnverified(tokenString, jwtv4.MapClaims{})
+	p := jwtlib.NewParser()
+	t, _, err := p.ParseUnverified(tokenString, jwtlib.MapClaims{})
 	if err != nil {
 		return "", fmt.Errorf("failed to parse token: %w", err)
 	}
-	claims, ok := t.Claims.(jwtv4.MapClaims)
+	claims, ok := t.Claims.(jwtlib.MapClaims)
 	if !ok {
 		return "", fmt.Errorf("invalid token claims type")
 	}
@@ -110,7 +110,7 @@ func (uc *usecase) GetTokenInfo(ctx context.Context, tokenString string) (*jwt.T
 		return nil, fmt.Errorf("failed to parse token: %w", err)
 	}
 
-	claims, ok := token.Claims.(jwtv4.MapClaims)
+	claims, ok := token.Claims.(jwtlib.MapClaims)
 	if !ok {
 		return nil, fmt.Errorf("invalid token claims")
 	}

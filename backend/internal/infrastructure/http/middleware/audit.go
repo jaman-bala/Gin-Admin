@@ -4,16 +4,16 @@ import (
 	"fmt"
 	"gin_auth_service/internal/application/auditlog"
 	domainAudit "gin_auth_service/internal/domain/auditlog"
-	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"uuid"
 )
 
-// AuditMiddleware logs user actions for auditing purposes.
-func AuditMiddleware(service auditlog.UseCase) gin.HandlerFunc {
+// AuditMiddleware records user actions for auditing purposes. Entries are
+// enqueued into an async recorder, so the request path never waits on the DB.
+func AuditMiddleware(recorder auditlog.Recorder) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 		method := c.Request.Method
@@ -24,14 +24,14 @@ func AuditMiddleware(service auditlog.UseCase) gin.HandlerFunc {
 
 		status := c.Writer.Status()
 
-		var userID = uuid.Nil
+		var userID = uuid.Nil()
 		if uid, exists := c.Get("id"); exists {
 			if uuidVal, ok := uid.(uuid.UUID); ok {
 				userID = uuidVal
 			}
 		}
 
-		var entityID = uuid.Nil
+		var entityID = uuid.Nil()
 		if idParam := c.Param("id"); idParam != "" {
 			if parsedID, err := uuid.Parse(idParam); err == nil {
 				entityID = parsedID
@@ -42,7 +42,7 @@ func AuditMiddleware(service auditlog.UseCase) gin.HandlerFunc {
 		}
 
 		entityType := "Unknown"
-		if strings.Contains(path, "/users") || strings.Contains(path, "/dashboard") {
+		if strings.Contains(path, "/users") {
 			entityType = "User"
 		} else if strings.Contains(path, "/auth") {
 			entityType = "Auth"
@@ -79,8 +79,6 @@ func AuditMiddleware(service auditlog.UseCase) gin.HandlerFunc {
 			CreatedAt: time.Now(),
 		}
 
-		if err := service.Create(c.Request.Context(), log); err != nil {
-			slog.Error("failed to create audit log", "error", err, "userID", userID, "entity", entityType)
-		}
+		recorder.Record(log)
 	}
 }

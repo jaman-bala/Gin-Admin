@@ -81,9 +81,10 @@ export default function Dashboard() {
     query: { queryKey: getGetUserStatsQueryKey(), enabled: !!currentUser && isAdmin }
   });
 
-  const { data: auditLogsRaw, isLoading: auditLoading } = useGetAuditLogs({
-    query: { queryKey: getGetAuditLogsQueryKey(), enabled: !!currentUser && isAdmin }
-  });
+  const { data: auditLogsRaw, isLoading: auditLoading } = useGetAuditLogs(
+    undefined,
+    { query: { queryKey: getGetAuditLogsQueryKey(), enabled: !!currentUser && isAdmin } }
+  );
 
   const auditLogs = auditLogsRaw?.logs?.slice(0, 6) ?? [];
   const activityData = buildActivityData(auditLogsRaw?.logs ?? []);
@@ -130,7 +131,7 @@ export default function Dashboard() {
                 />
                 <StatCard
                   title={t.dashboard.new_month}
-                  value={stats?.new_this_month ?? 0}
+                  value={stats?.newThisMonth ?? 0}
                   icon={UserPlus}
                   accent="text-amber-400"
                   bg="bg-amber-500/10"

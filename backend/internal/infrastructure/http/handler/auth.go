@@ -19,10 +19,13 @@ func NewAuthHandler(usecase auth.UseCase) *AuthHandler {
 
 // Login godoc
 // @Summary Login user
+// @ID authLogin
 // @Tags auth
 // @Accept json
 // @Produce json
 // @Param login body auth.LoginRequestDTO true "Login credentials"
+// @Success 200 {object} auth.LoginResponseDTO
+// @Failure 401 {object} map[string]string
 // @Router /api/v1/auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
 	var req auth.LoginRequestDTO
@@ -41,10 +44,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 // Refresh godoc
 // @Summary Refresh access token
+// @ID authRefresh
 // @Tags auth
 // @Accept json
 // @Produce json
 // @Param body body auth.RefreshTokenRequest true "Refresh token"
+// @Success 200 {object} auth.LoginResponseDTO
+// @Failure 401 {object} map[string]string
 // @Router /api/v1/auth/refresh [post]
 func (h *AuthHandler) Refresh(c *gin.Context) {
 	var req auth.RefreshTokenRequest
@@ -62,10 +68,12 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 
 // Logout godoc
 // @Summary Logout user
+// @ID authLogout
 // @Tags auth
 // @Accept json
 // @Security BearerAuth
 // @Param body body auth.LogoutRequestDTO false "Optional refresh token to invalidate"
+// @Success 200 {object} map[string]string
 // @Router /api/v1/auth/logout [post]
 func (h *AuthHandler) Logout(c *gin.Context) {
 	accessToken := strings.TrimPrefix(c.GetHeader("Authorization"), "Bearer ")

@@ -21,6 +21,7 @@ func NewAnalyticsHandler(usecase analytics.UseCase) *AnalyticsHandler {
 
 // GetUserStats godoc
 // @Summary Get user statistics
+// @ID getUserStats
 // @Tags analytics
 // @Security BearerAuth
 // @Produce json

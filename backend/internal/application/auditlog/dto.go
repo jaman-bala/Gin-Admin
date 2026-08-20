@@ -4,7 +4,7 @@ import (
 	"gin_auth_service/internal/domain/auditlog"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // ResponseDTO represents an audit log entry in a response.

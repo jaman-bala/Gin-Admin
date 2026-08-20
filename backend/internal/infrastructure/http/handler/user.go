@@ -1,13 +1,12 @@
 package handler
 
 import (
-	"gin_auth_service/internal/application/file"
 	"gin_auth_service/internal/application/user"
 	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // UserHandler handles user-related HTTP requests.
@@ -21,6 +20,7 @@ func NewUserHandler(usecase user.UseCase) *UserHandler {
 
 // GetMe godoc
 // @Summary Get current user profile
+// @ID getMe
 // @Tags users
 // @Security BearerAuth
 // @Produce json
@@ -47,6 +47,7 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 
 // GetAll godoc
 // @Summary Get all users with pagination
+// @ID listUsers
 // @Tags users
 // @Security BearerAuth
 // @Produce json
@@ -85,10 +86,12 @@ func (h *UserHandler) GetAll(c *gin.Context) {
 
 // GetByID godoc
 // @Summary Get user by ID
+// @ID getUser
 // @Tags users
 // @Security BearerAuth
 // @Param id path string true "User ID"
 // @Produce json
+// @Success 200 {object} user.UserResponseDTO
 // @Router /api/v1/users/{id} [get]
 func (h *UserHandler) GetByID(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
@@ -106,10 +109,12 @@ func (h *UserHandler) GetByID(c *gin.Context) {
 
 // GetByPhone godoc
 // @Summary Get user by phone
+// @ID getUserByPhone
 // @Tags users
 // @Security BearerAuth
 // @Param phone path string true "User phone"
 // @Produce json
+// @Success 200 {object} user.UserResponseDTO
 // @Router /api/v1/users/phone/{phone} [get]
 func (h *UserHandler) GetByPhone(c *gin.Context) {
 	u, err := h.usecase.GetByPhone(c.Request.Context(), c.Param("phone"))
@@ -122,10 +127,13 @@ func (h *UserHandler) GetByPhone(c *gin.Context) {
 
 // UpdateMe godoc
 // @Summary Update own profile
+// @ID updateMe
 // @Tags users
 // @Security BearerAuth
-// @Accept multipart/form-data
+// @Accept json
 // @Produce json
+// @Param user body user.UserSelfUpdateDTO true "Fields to update"
+// @Success 200 {object} user.UserResponseDTO
 // @Router /api/v1/users/me [put]
 func (h *UserHandler) UpdateMe(c *gin.Context) {
 	uid, exists := c.Get("id")
@@ -140,12 +148,12 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 	}
 
 	var req user.UserSelfUpdateDTO
-	if err := c.ShouldBind(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	u, err := h.usecase.PatchSelf(c.Request.Context(), id, req, extractPhoto(c))
+	u, err := h.usecase.PatchSelf(c.Request.Context(), id, req, nil)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -155,11 +163,14 @@ func (h *UserHandler) UpdateMe(c *gin.Context) {
 
 // Patch godoc
 // @Summary Update user (admin only)
+// @ID updateUser
 // @Tags users
 // @Security BearerAuth
-// @Accept multipart/form-data
+// @Accept json
 // @Produce json
-// @Param id path string true "User ID"
+// @Param id   path string           true "User ID"
+// @Param user body user.UserUpdateDTO true "Fields to update"
+// @Success 200 {object} user.UserResponseDTO
 // @Router /api/v1/users/{id} [patch]
 func (h *UserHandler) Patch(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
@@ -169,12 +180,12 @@ func (h *UserHandler) Patch(c *gin.Context) {
 	}
 
 	var req user.UserUpdateDTO
-	if err := c.ShouldBind(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	u, err := h.usecase.Patch(c.Request.Context(), id, req, extractPhoto(c))
+	u, err := h.usecase.Patch(c.Request.Context(), id, req, nil)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -184,19 +195,22 @@ func (h *UserHandler) Patch(c *gin.Context) {
 
 // Create godoc
 // @Summary Create user (admin only)
+// @ID createUser
 // @Tags users
 // @Security BearerAuth
-// @Accept multipart/form-data
+// @Accept json
 // @Produce json
+// @Param user body user.UserRequestDTO true "User data"
+// @Success 201 {object} user.UserResponseDTO
 // @Router /api/v1/users [post]
 func (h *UserHandler) Create(c *gin.Context) {
 	var req user.UserRequestDTO
-	if err := c.ShouldBind(&req); err != nil {
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	u, err := h.usecase.Create(c.Request.Context(), req, extractPhoto(c))
+	u, err := h.usecase.Create(c.Request.Context(), req, nil)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -206,9 +220,11 @@ func (h *UserHandler) Create(c *gin.Context) {
 
 // Delete godoc
 // @Summary Delete user (admin only)
+// @ID deleteUser
 // @Tags users
 // @Security BearerAuth
 // @Param id path string true "User ID"
+// @Success 200 {object} map[string]string
 // @Router /api/v1/users/{id} [delete]
 func (h *UserHandler) Delete(c *gin.Context) {
 	id, err := uuid.Parse(c.Param("id"))
@@ -221,24 +237,4 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "User deleted"})
-}
-
-// extractPhoto reads an uploaded photo from the multipart form, if present.
-// Returns nil when the field is absent, has an empty filename, or has zero size
-// (browsers submit empty file inputs as a part with an empty filename).
-func extractPhoto(c *gin.Context) *file.FileUpload {
-	f, err := c.FormFile("photo")
-	if err != nil || f == nil || f.Size == 0 || f.Filename == "" {
-		return nil
-	}
-	src, err := f.Open()
-	if err != nil {
-		return nil
-	}
-	return &file.FileUpload{
-		Filename:    f.Filename,
-		Size:        f.Size,
-		ContentType: f.Header.Get("Content-Type"),
-		File:        src,
-	}
 }

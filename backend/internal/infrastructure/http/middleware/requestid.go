@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"uuid"
 )
 
 const (
@@ -16,7 +16,7 @@ func RequestIDMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		requestID := c.GetHeader(RequestIDHeader)
 		if requestID == "" {
-			requestID = uuid.Must(uuid.NewV7()).String()
+			requestID = uuid.NewV7().String()
 		}
 
 		c.Set(RequestIDKey, requestID)

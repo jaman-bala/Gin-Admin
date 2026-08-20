@@ -9,12 +9,12 @@ import (
 
 // analyticsRepository implements analytics.UserStatsRepository
 type analyticsRepository struct {
-	db *sqlx.DB
+	base
 }
 
 // NewAnalyticsRepository creates a new instance of analytics repository.
 func NewAnalyticsRepository(db *sqlx.DB) analytics.UserStatsRepository {
-	return &analyticsRepository{db: db}
+	return &analyticsRepository{base{db: db}}
 }
 
 // GetUserStats returns aggregated user statistics for dashboard.
@@ -31,7 +31,7 @@ func (r *analyticsRepository) GetUserStats(ctx context.Context) (*analytics.User
 	`
 
 	var stats analytics.UserStats
-	err := r.db.QueryRowContext(ctx, query).Scan(
+	err := r.q(ctx).QueryRowxContext(ctx, query).Scan(
 		&stats.Total,
 		&stats.Active,
 		&stats.Inactive,

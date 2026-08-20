@@ -4,7 +4,7 @@ import (
 	"gin_auth_service/internal/domain/user"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // UserListResponse is the paginated response for the user list endpoint.
@@ -17,12 +17,13 @@ type UserListResponse struct {
 
 // UserRequestDTO represents a request to create a new user.
 type UserRequestDTO struct {
-	FirstName  string    `json:"first_name" form:"first_name"`
-	LastName   string    `json:"last_name" form:"last_name"`
-	MiddleName string    `json:"middle_name" form:"middle_name"`
-	Password   string    `json:"password" validate:"required,strong_password" form:"password" example:"Password123"`
-	Phone      string    `json:"phone"    validate:"required,e164"             form:"phone"     example:"+996500500500"`
-	Role       user.Role `json:"role" form:"role" default:"user"`
+	FirstName  string    `json:"first_name"`
+	LastName   string    `json:"last_name"`
+	MiddleName string    `json:"middle_name"`
+	Password   string    `json:"password" validate:"required,strong_password" example:"Password123"`
+	Phone      string    `json:"phone"    validate:"required,e164"             example:"+996500500500"`
+	Telegram string    `json:"telegram"`
+	Role       user.Role `json:"role"`
 }
 
 // UserResponseDTO represents a user in a response.
@@ -32,9 +33,10 @@ type UserResponseDTO struct {
 	LastName   string     `json:"last_name"`
 	MiddleName string     `json:"middle_name"`
 	Phone      string     `json:"phone"`
-	Role       user.Role  `json:"role"`
-	Photo      string     `json:"photo"`
-	IsActive   bool       `json:"is_active"`
+	Role     user.Role `json:"role"`
+	Photo    string    `json:"photo"`
+	Telegram string    `json:"telegram"`
+	IsActive bool      `json:"is_active"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
 	DeletedAt  *time.Time `json:"deleted_at"`
@@ -42,13 +44,14 @@ type UserResponseDTO struct {
 
 // UserUpdateDTO represents a request to update a user.
 type UserUpdateDTO struct {
-	FirstName  *string `json:"first_name" form:"first_name"`
-	LastName   *string `json:"last_name" form:"last_name"`
-	MiddleName *string `json:"middle_name" form:"middle_name"`
-	Phone      *string `json:"phone" validate:"omitempty,e164" form:"phone" example:"+996500500500"`
-	Password   *string `json:"password" form:"password"`
-	Role       *string `json:"role" form:"role"`
-	IsActive   *bool   `json:"is_active" form:"is_active"`
+	FirstName  *string `json:"first_name"`
+	LastName   *string `json:"last_name"`
+	MiddleName *string `json:"middle_name"`
+	Phone      *string `json:"phone"     validate:"omitempty,e164" example:"+996500500500"`
+	Password   *string `json:"password"`
+	Role       *string `json:"role"`
+	Telegram   *string `json:"telegram"`
+	IsActive   *bool   `json:"is_active"`
 }
 
 // FromModel maps a user entity to a response DTO.
@@ -60,6 +63,7 @@ func (dto *UserResponseDTO) FromModel(u *user.User) {
 	dto.Phone = u.Phone
 	dto.Role = u.Role
 	dto.Photo = u.Photo
+	dto.Telegram = u.Telegram
 	dto.IsActive = u.IsActive
 	dto.CreatedAt = u.CreatedAt
 	dto.UpdatedAt = u.UpdatedAt
@@ -83,6 +87,9 @@ func (dto *UserUpdateDTO) ApplyToModel(u *user.User) {
 	if dto.Role != nil {
 		u.Role = user.Role(*dto.Role)
 	}
+	if dto.Telegram != nil {
+		u.Telegram = *dto.Telegram
+	}
 	if dto.IsActive != nil {
 		u.IsActive = *dto.IsActive
 	}
@@ -90,12 +97,16 @@ func (dto *UserUpdateDTO) ApplyToModel(u *user.User) {
 
 // UserSelfUpdateDTO is the subset of fields a user may change on their own profile.
 // Role and IsActive are intentionally absent to prevent privilege escalation.
+// Changing the password requires CurrentPassword: a stolen access token alone
+// must not be enough to take over the account permanently.
 type UserSelfUpdateDTO struct {
-	FirstName  *string `json:"first_name"  form:"first_name"`
-	LastName   *string `json:"last_name"   form:"last_name"`
-	MiddleName *string `json:"middle_name" form:"middle_name"`
-	Phone      *string `json:"phone"       form:"phone"     validate:"omitempty,e164"            example:"+996500500500"`
-	Password   *string `json:"password"    form:"password"  validate:"omitempty,strong_password"`
+	FirstName       *string `json:"first_name"`
+	LastName        *string `json:"last_name"`
+	MiddleName      *string `json:"middle_name"`
+	Phone           *string `json:"phone"            validate:"omitempty,e164"            example:"+996500500500"`
+	Password        *string `json:"password"         validate:"omitempty,strong_password"`
+	CurrentPassword *string `json:"current_password"`
+	Telegram        *string `json:"telegram"`
 }
 
 func (dto *UserSelfUpdateDTO) ApplyToModel(u *user.User) {
@@ -110,5 +121,8 @@ func (dto *UserSelfUpdateDTO) ApplyToModel(u *user.User) {
 	}
 	if dto.Phone != nil {
 		u.Phone = *dto.Phone
+	}
+	if dto.Telegram != nil {
+		u.Telegram = *dto.Telegram
 	}
 }

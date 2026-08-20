@@ -16,8 +16,7 @@ Thumbs.db
 backend/bin/
 backend/main
 
-# Backend — generated files
-backend/docs/
+# Backend — generated files (docs/ is committed — it contains the API spec)
 
 # Docker local overrides
 docker-compose.override.yml

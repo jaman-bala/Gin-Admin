@@ -52,7 +52,7 @@ func NewCache(cfg *config.Config) (*Cache, error) {
 
 // --- token.Repository ---
 
-func (c *Cache) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
+func (c *Cache) Set(ctx context.Context, key string, value any, expiration time.Duration) error {
 	return c.client.Set(ctx, key, value, expiration).Err()
 }
 

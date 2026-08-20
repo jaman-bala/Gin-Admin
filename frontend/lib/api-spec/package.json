@@ -3,9 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "codegen": "orval --config ./orval.config.ts"
+    "convert": "swagger2openapi ../../../backend/docs/swagger.json -o openapi.yaml --yaml",
+    "codegen": "pnpm convert && orval --config ./orval.config.ts"
   },
   "devDependencies": {
-    "orval": "^8.5.2"
+    "orval": "^8.5.2",
+    "swagger2openapi": "^7.0.8"
   }
 }

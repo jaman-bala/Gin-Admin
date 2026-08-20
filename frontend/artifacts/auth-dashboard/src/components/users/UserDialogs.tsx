@@ -62,6 +62,7 @@ const createUserSchema = z.object({
   phone: z.string().min(5, translations.common.required),
   password: z.string().min(6, translations.common.min_chars.replace("{count}", "6")),
   role: z.enum(["admin", "user"]),
+  telegram: z.string().optional(),
 });
 
 type CreateUserValues = z.infer<typeof createUserSchema>;
@@ -88,13 +89,14 @@ export function CreateUserDialog({
       phone: "",
       password: "",
       role: "user",
+      telegram: "",
     },
   });
 
   const onSubmit = (values: CreateUserValues) => {
     const dataToSubmit = {
       ...values,
-      ...(photoBlob ? { photo: photoBlob } : {}),
+      telegram: values.telegram || undefined,
     };
     createMutation.mutate(
       { data: dataToSubmit },
@@ -273,6 +275,23 @@ export function CreateUserDialog({
               />
             </div>
 
+            <FormField
+              control={form.control}
+              name="telegram"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>
+                    {t.auth.telegram}{" "}
+                    <span className="text-muted-foreground font-normal">({t.common.optional})</span>
+                  </FormLabel>
+                  <FormControl>
+                    <Input placeholder={t.auth.telegram_placeholder} {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <DialogFooter className="pt-4">
               <Button
                 variant="outline"
@@ -308,6 +327,7 @@ const editUserSchema = z.object({
   ),
   role: z.enum(["admin", "user", "superuser"]),
   is_active: z.boolean(),
+  telegram: z.string().optional(),
 });
 
 type EditUserValues = z.infer<typeof editUserSchema>;
@@ -325,7 +345,6 @@ export function EditUserDialog({
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const updateMutation = useUpdateUser();
-  const [photoBlob, setPhotoBlob] = useState<Blob | null>(null);
 
   const form = useForm<EditUserValues>({
     resolver: zodResolver(editUserSchema),
@@ -337,6 +356,7 @@ export function EditUserDialog({
       password: "",
       role: (user.role as "admin" | "user" | "superuser") || "user",
       is_active: user.is_active,
+      telegram: user.telegram || "",
     },
   });
 
@@ -351,6 +371,7 @@ export function EditUserDialog({
         password: "",
         role: (user.role as "admin" | "user" | "superuser") || "user",
         is_active: user.is_active,
+        telegram: user.telegram || "",
       });
     }
   }, [user, form]);
@@ -363,10 +384,10 @@ export function EditUserDialog({
       phone: values.phone,
       role: values.role,
       is_active: values.is_active,
+      telegram: values.telegram || undefined,
     };
 
     if (values.password) dataToSubmit.password = values.password;
-    if (photoBlob) dataToSubmit.photo = photoBlob;
 
     updateMutation.mutate(
       { id: user.id, data: dataToSubmit },
@@ -615,7 +636,22 @@ export function EditUserDialog({
                   />
                 </div>
 
-
+                <FormField
+                  control={form.control}
+                  name="telegram"
+                  render={({ field }: { field: any }) => (
+                    <FormItem>
+                      <FormLabel>
+                        {t.auth.telegram}{" "}
+                        <span className="text-muted-foreground font-normal">({t.common.optional})</span>
+                      </FormLabel>
+                      <FormControl>
+                        <Input placeholder={t.auth.telegram_placeholder} {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <DialogFooter className="pt-4">
                   <Button

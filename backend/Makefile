@@ -1,4 +1,4 @@
-.PHONY: build run test migrate-up migrate-down migrate-status migrate-create swag
+.PHONY: build run test migrate-up migrate-down migrate-status migrate-create swag gen
 
 # Build the application
 build:
@@ -8,6 +8,10 @@ build:
 # Generate swagger docs
 swag:
 	swag init -g cmd/api/main.go
+
+# Full codegen: swagger → TypeScript types (run after adding/editing Go handlers)
+gen: swag
+	cd ../frontend && pnpm --filter @workspace/api-spec run codegen
 
 # Run the application
 run:

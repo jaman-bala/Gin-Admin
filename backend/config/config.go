@@ -20,9 +20,14 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Port         string
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
+	Port            string
+	ReadTimeout     time.Duration
+	WriteTimeout    time.Duration
+	ShutdownTimeout time.Duration
+	MaxBodyBytes    int64
+	RunMigrations   bool
+	CORSOrigins     []string
+	MetricsToken    string
 }
 
 type DatabaseConfig struct {
@@ -65,9 +70,16 @@ func LoadConfig() (*Config, error) {
 
 	config := &Config{
 		Server: ServerConfig{
-			Port:         getEnv("SERVER_PORT", "8080"),
-			ReadTimeout:  time.Second * time.Duration(getEnvAsInt("SERVER_READ_TIMEOUT", 10)),
-			WriteTimeout: time.Second * time.Duration(getEnvAsInt("SERVER_WRITE_TIMEOUT", 10)),
+			Port:        getEnv("SERVER_PORT", "8080"),
+			ReadTimeout: time.Second * time.Duration(getEnvAsInt("SERVER_READ_TIMEOUT", 60)),
+			// WriteTimeout must stay above the pprof CPU-profile window
+			// (/debug/pprof/profile?seconds=30 by default).
+			WriteTimeout:    time.Second * time.Duration(getEnvAsInt("SERVER_WRITE_TIMEOUT", 60)),
+			ShutdownTimeout: time.Second * time.Duration(getEnvAsInt("SERVER_SHUTDOWN_TIMEOUT", 30)),
+			MaxBodyBytes:    int64(getEnvAsInt("SERVER_MAX_BODY_MB", 10)) << 20,
+			RunMigrations:   getEnvAsBool("RUN_MIGRATIONS", false),
+			CORSOrigins:     splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://localhost:8085")),
+			MetricsToken:    readSecret("METRICS_TOKEN", ""),
 		},
 		Database: DatabaseConfig{
 			Host:            getEnv("DB_HOST", ""),
@@ -81,8 +93,10 @@ func LoadConfig() (*Config, error) {
 			ConnMaxLifetime: time.Hour * time.Duration(getEnvAsInt("DB_CONN_MAX_LIFETIME_HOURS", 1)),
 		},
 		JWT: JWTConfig{
-			Secret:        readSecret("SECRET_KEY", ""),
-			Expiry:        time.Hour * time.Duration(getEnvAsInt("JWT_EXPIRY_HOURS", 24)),
+			Secret: readSecret("SECRET_KEY", ""),
+			// Access tokens are short-lived; clients refresh them via
+			// /auth/refresh. JWT_EXPIRY_HOURS is kept for backward compat.
+			Expiry:        jwtAccessExpiry(),
 			RefreshExpiry: time.Hour * time.Duration(getEnvAsInt("JWT_REFRESH_EXPIRY_HOURS", 168)),
 		},
 		Redis: RedisConfig{
@@ -146,6 +160,29 @@ func readSecret(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// jwtAccessExpiry prefers JWT_EXPIRY_MINUTES; falls back to the legacy
+// JWT_EXPIRY_HOURS if set, then to 15 minutes.
+func jwtAccessExpiry() time.Duration {
+	if m := getEnvAsInt("JWT_EXPIRY_MINUTES", 0); m > 0 {
+		return time.Minute * time.Duration(m)
+	}
+	if h := getEnvAsInt("JWT_EXPIRY_HOURS", 0); h > 0 {
+		return time.Hour * time.Duration(h)
+	}
+	return 15 * time.Minute
+}
+
+func splitCSV(s string) []string {
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if trimmed := strings.TrimSpace(p); trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }
 
 func getEnv(key, fallback string) string {

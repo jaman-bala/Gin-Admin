@@ -4,7 +4,7 @@ import (
 	"context"
 	"gin_auth_service/internal/domain/auditlog"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 
@@ -17,10 +17,6 @@ func NewUseCase(repo auditlog.Repository) UseCase {
 	return &usecase{
 		repo: repo,
 	}
-}
-
-func (uc *usecase) Create(ctx context.Context, log *auditlog.AuditLog) error {
-	return uc.repo.Create(ctx, log)
 }
 
 func (uc *usecase) GetAll(ctx context.Context, page, limit int, entityID *uuid.UUID) (AuditLogListResponse, error) {

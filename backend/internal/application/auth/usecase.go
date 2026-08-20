@@ -2,16 +2,23 @@ package auth
 
 import (
 	"context"
+	stdErrors "errors"
 	"fmt"
 	"gin_auth_service/internal/application/token"
 	"gin_auth_service/internal/application/user"
 	domainUser "gin_auth_service/internal/domain/user"
+	"gin_auth_service/internal/pkg/hash"
 	"gin_auth_service/internal/pkg/utils"
 	"gin_auth_service/pkg/errors"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 )
+
+// dummyHash is compared against when the user is not found, equalizing
+// response time with the real bcrypt check to prevent user enumeration
+// via timing analysis.
+var dummyHash, _ = hash.HashPassword("dummy-timing-equalizer")
 
 // UserReader is the minimal interface auth needs from the user domain.
 // Defined here (consumer side) to avoid importing the full user.UseCase.
@@ -47,7 +54,12 @@ func (uc *usecase) Login(ctx context.Context, req LoginRequestDTO) (*LoginRespon
 	req.Phone = utils.NormalizePhone(req.Phone)
 	u, err := uc.userRepo.FindByPhone(ctx, req.Phone)
 	if err != nil {
-		return nil, errors.ErrInvalidCredentials
+		if stdErrors.Is(err, errors.ErrUserNotFound) {
+			_ = hash.CheckPassword(dummyHash, req.Password)
+			return nil, errors.ErrInvalidCredentials
+		}
+		// Infrastructure failure must surface as 500, not "wrong password".
+		return nil, fmt.Errorf("login: find user: %w", err)
 	}
 	if !u.IsActive {
 		return nil, errors.ErrAccountBlocked

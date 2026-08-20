@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 type usecase struct {
@@ -55,7 +55,7 @@ func (uc *usecase) UploadFile(ctx context.Context, input *FileUpload, folder str
 	}
 
 	ext := filepath.Ext(input.Filename)
-	objectName := fmt.Sprintf("%s/%s%s", folder, uuid.Must(uuid.NewV7()).String(), ext)
+	objectName := fmt.Sprintf("%s/%s%s", folder, uuid.NewV7().String(), ext)
 
 	if _, err := uc.repo.UploadFile(ctx, uc.bucketName, objectName, input.File, input.Size, input.ContentType); err != nil {
 		return "", err

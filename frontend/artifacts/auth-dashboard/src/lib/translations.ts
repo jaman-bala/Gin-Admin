@@ -53,6 +53,8 @@ export const translations = {
     middle_name: "Отчество",
     upload_photo: "Загрузить фото",
     change_photo: "Изменить фото",
+    telegram: "Telegram",
+    telegram_placeholder: "@username",
   },
   profile: {
     title: "Настройки профиля",

@@ -4,7 +4,7 @@ import (
 	"context"
 	"gin_auth_service/internal/application/file"
 
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // UseCase handles business scenarios for user management.

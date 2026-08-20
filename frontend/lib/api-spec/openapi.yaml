@@ -1,559 +1,472 @@
-openapi: 3.1.0
+openapi: 3.0.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
-  title: Api
-  version: 0.1.0
-  description: API specification
-servers:
-  - url: /api/v1
-    description: Base API path
-tags:
-  - name: health
-    description: Health operations
-  - name: auth
-    description: Authentication operations
-  - name: users
-    description: User management operations
+  description: API for managing users and authentication in the Auth Service application.
+  title: AUTH SERVICE API
+  contact: {}
+  version: "1.0"
 paths:
-  /healthz:
+  /api/v1/audit:
     get:
-      operationId: healthCheck
-      tags: [health]
-      summary: Health check
-      description: Returns server health status
-      responses:
-        "200":
-          description: Healthy
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HealthStatus"
-
-  /auth/login:
-    post:
-      operationId: authLogin
-      tags: [auth]
-      summary: Login with phone and password
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/LoginRequest"
-      responses:
-        "200":
-          description: Successfully authenticated
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/AuthTokens"
-        "401":
-          description: Invalid credentials
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Account is inactive
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /auth/register:
-    post:
-      operationId: authRegister
-      tags: [auth]
-      summary: Register a new user
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: "#/components/schemas/RegisterRequest"
-      responses:
-        "201":
-          description: User created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "400":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "409":
-          description: Phone already registered
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /auth/refresh:
-    post:
-      operationId: authRefresh
-      tags: [auth]
-      summary: Refresh access token
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/RefreshRequest"
-      responses:
-        "200":
-          description: New access token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/RefreshResponse"
-        "401":
-          description: Invalid or expired refresh token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /auth/logout:
-    post:
-      operationId: authLogout
-      tags: [auth]
-      summary: Logout and invalidate tokens
       security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/LogoutRequest"
-      responses:
-        "200":
-          description: Logged out successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/MessageResponse"
-
-  /users:
-    get:
-      operationId: listUsers
-      tags: [users]
-      summary: List all users (admin only)
-      security:
-        - bearerAuth: []
+        - BearerAuth: []
+      tags:
+        - audit
+      summary: Get all user actions
+      operationId: getAuditLogs
       parameters:
-        - name: page
+        - description: Page number
+          name: page
           in: query
           schema:
             type: integer
             default: 1
-        - name: limit
+        - description: Items per page
+          name: limit
           in: query
           schema:
             type: integer
-            default: 20
-        - name: search
+            default: 10
+        - description: Filter by entity ID
+          name: entity_id
           in: query
           schema:
             type: string
-        - name: is_active
-          in: query
-          schema:
-            type: boolean
       responses:
         "200":
-          description: List of users
+          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserListResponse"
-        "403":
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/auditlog.AuditLogListResponse"
+  /api/v1/auth/login:
     post:
-      operationId: createUser
-      tags: [users]
-      summary: Create a new user (admin only)
-      security:
-        - bearerAuth: []
+      tags:
+        - auth
+      summary: Login user
+      operationId: authLogin
       requestBody:
-        required: true
         content:
-          multipart/form-data:
+          application/json:
             schema:
-              $ref: "#/components/schemas/CreateUserRequest"
-      responses:
-        "201":
-          description: User created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "400":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-        "403":
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /users/me:
-    get:
-      operationId: getMe
-      tags: [users]
-      summary: Get current user profile
-      security:
-        - bearerAuth: []
+              $ref: "#/components/schemas/auth.LoginRequestDTO"
+        description: Login credentials
+        required: true
       responses:
         "200":
-          description: Current user profile
+          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
+                $ref: "#/components/schemas/auth.LoginResponseDTO"
         "401":
           description: Unauthorized
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                type: object
+                additionalProperties:
+                  type: string
+  /api/v1/auth/logout:
+    post:
+      security:
+        - BearerAuth: []
+      tags:
+        - auth
+      summary: Logout user
+      operationId: authLogout
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/auth.LogoutRequestDTO"
+        description: Optional refresh token to invalidate
+      responses:
+        "200":
+          description: OK
+          content:
+            "*/*":
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+  /api/v1/auth/refresh:
+    post:
+      tags:
+        - auth
+      summary: Refresh access token
+      operationId: authRefresh
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/auth.RefreshTokenRequest"
+        description: Refresh token
+        required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/auth.LoginResponseDTO"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+  /api/v1/users:
+    get:
+      security:
+        - BearerAuth: []
+      tags:
+        - users
+      summary: Get all users with pagination
+      operationId: listUsers
+      parameters:
+        - description: Page number
+          name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - description: Items per page
+          name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+        - description: Search by name or phone
+          name: search
+          in: query
+          schema:
+            type: string
+        - description: Filter by active status
+          name: is_active
+          in: query
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/user.UserListResponse"
+    post:
+      security:
+        - BearerAuth: []
+      tags:
+        - users
+      summary: Create user (admin only)
+      operationId: createUser
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/user.UserRequestDTO"
+        description: User data
+        required: true
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/user.UserResponseDTO"
+  /api/v1/users/me:
+    get:
+      security:
+        - BearerAuth: []
+      tags:
+        - users
+      summary: Get current user profile
+      operationId: getMe
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/user.UserResponseDTO"
     put:
+      security:
+        - BearerAuth: []
+      tags:
+        - users
+      summary: Update own profile
       operationId: updateMe
-      tags: [users]
-      summary: Update current user profile
-      security:
-        - bearerAuth: []
       requestBody:
-        required: true
         content:
-          multipart/form-data:
+          application/json:
             schema:
-              $ref: "#/components/schemas/UpdateUserRequest"
+              $ref: "#/components/schemas/user.UserSelfUpdateDTO"
+        description: Fields to update
+        required: true
       responses:
         "200":
-          description: Updated user profile
+          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
-        "400":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /users/stats:
+                $ref: "#/components/schemas/user.UserResponseDTO"
+  "/api/v1/users/phone/{phone}":
     get:
+      security:
+        - BearerAuth: []
+      tags:
+        - users
+      summary: Get user by phone
+      operationId: getUserByPhone
+      parameters:
+        - description: User phone
+          name: phone
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/user.UserResponseDTO"
+  /api/v1/users/stats:
+    get:
+      security:
+        - BearerAuth: []
+      tags:
+        - analytics
+      summary: Get user statistics
       operationId: getUserStats
-      tags: [users]
-      summary: Get user statistics (admin only)
-      security:
-        - bearerAuth: []
       responses:
         "200":
-          description: User statistics
+          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/UserStats"
-        "403":
-          description: Forbidden
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
-  /users/{id}:
+                $ref: "#/components/schemas/analytics.UserStats"
+  "/api/v1/users/{id}":
     get:
+      security:
+        - BearerAuth: []
+      tags:
+        - users
+      summary: Get user by ID
       operationId: getUser
-      tags: [users]
-      summary: Get a user by ID (admin only)
-      security:
-        - bearerAuth: []
       parameters:
-        - name: id
+        - description: User ID
+          name: id
           in: path
           required: true
           schema:
             type: string
-            format: uuid
       responses:
         "200":
-          description: User details
+          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/User"
-        "404":
-          description: User not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-    put:
-      operationId: updateUser
-      tags: [users]
-      summary: Update a user (admin only)
-      security:
-        - bearerAuth: []
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          multipart/form-data:
-            schema:
-              $ref: "#/components/schemas/UpdateUserRequest"
-      responses:
-        "200":
-          description: Updated user
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/User"
-        "400":
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/user.UserResponseDTO"
     delete:
-      operationId: deleteUser
-      tags: [users]
-      summary: Delete a user (admin only)
       security:
-        - bearerAuth: []
+        - BearerAuth: []
+      tags:
+        - users
+      summary: Delete user (admin only)
+      operationId: deleteUser
       parameters:
-        - name: id
+        - description: User ID
+          name: id
           in: path
           required: true
           schema:
             type: string
-            format: uuid
       responses:
         "200":
-          description: User deleted
+          description: OK
+          content:
+            "*/*":
+              schema:
+                type: object
+                additionalProperties:
+                  type: string
+    patch:
+      security:
+        - BearerAuth: []
+      tags:
+        - users
+      summary: Update user (admin only)
+      operationId: updateUser
+      parameters:
+        - description: User ID
+          name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/user.UserUpdateDTO"
+        description: Fields to update
+        required: true
+      responses:
+        "200":
+          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/MessageResponse"
-        "404":
-          description: User not found
+                $ref: "#/components/schemas/user.UserResponseDTO"
+  /health:
+    get:
+      tags:
+        - health
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: OK
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
+                type: object
+                additionalProperties: true
+        "503":
+          description: Service Unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+servers:
+  - url: //localhost:8082
 components:
   securitySchemes:
-    bearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-
+    BearerAuth:
+      description: "Enter: Bearer {your_jwt_token} (e.g., Bearer eyJhbGciOiJIUzI1NiIs...)"
+      type: apiKey
+      name: Authorization
+      in: header
   schemas:
-    HealthStatus:
+    analytics.UserStats:
       type: object
       properties:
-        status:
-          type: string
-      required:
-        - status
-
-    ErrorResponse:
+        active:
+          type: integer
+          format: int64
+        admins:
+          type: integer
+          format: int64
+        inactive:
+          type: integer
+          format: int64
+        newThisMonth:
+          type: integer
+          format: int64
+        total:
+          type: integer
+          format: int64
+    auditlog.AuditLogListResponse:
       type: object
       properties:
-        message:
-          type: string
-        error:
-          type: string
-      required:
-        - message
-
-    MessageResponse:
-      type: object
-      properties:
-        message:
-          type: string
-      required:
-        - message
-
-    LoginRequest:
-      type: object
-      properties:
-        phone:
-          type: string
-        password:
-          type: string
-      required:
-        - phone
-        - password
-
-    AuthTokens:
-      type: object
-      properties:
-        access_token:
-          type: string
-        refresh_token:
-          type: string
-        message:
-          type: string
-      required:
-        - access_token
-        - refresh_token
-
-    RegisterRequest:
-      type: object
-      properties:
-        first_name:
-          type: string
-        last_name:
-          type: string
-        middle_name:
-          type: string
-        phone:
-          type: string
-        password:
-          type: string
-        photo:
-          type: string
-          format: binary
-      required:
-        - first_name
-        - last_name
-        - phone
-        - password
-
-    RefreshRequest:
-      type: object
-      properties:
-        refresh_token:
-          type: string
-      required:
-        - refresh_token
-
-    RefreshResponse:
-      type: object
-      properties:
-        access_token:
-          type: string
-        expires_at:
-          type: string
-          format: date-time
-        user:
-          $ref: "#/components/schemas/User"
-      required:
-        - access_token
-
-    LogoutRequest:
-      type: object
-      properties:
-        token:
-          type: string
-      required:
-        - token
-
-    User:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        first_name:
-          type: string
-        last_name:
-          type: string
-        middle_name:
-          type: string
-        phone:
-          type: string
-        role:
-          type: string
-          enum: [admin, user]
-        photo:
-          type: string
-        is_active:
-          type: boolean
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-      required:
-        - id
-        - first_name
-        - last_name
-        - phone
-        - role
-        - is_active
-        - created_at
-        - updated_at
-
-    UserListResponse:
-      type: object
-      properties:
-        users:
+        limit:
+          type: integer
+        logs:
           type: array
           items:
-            $ref: "#/components/schemas/User"
+            $ref: "#/components/schemas/auditlog.ResponseDTO"
+        page:
+          type: integer
         total:
+          type: integer
+    auditlog.ResponseDTO:
+      type: object
+      properties:
+        action:
+          type: string
+        client_ip:
+          type: string
+        created_at:
+          type: string
+        description:
+          type: string
+        entity:
+          type: string
+        entity_id:
+          type: string
+        id:
+          type: integer
+        status:
+          type: integer
+        user_agent:
+          type: string
+        user_id:
+          type: string
+    auth.LoginRequestDTO:
+      type: object
+      required:
+        - password
+        - phone
+      properties:
+        password:
+          type: string
+          example: Password123
+        phone:
+          type: string
+          example: "+996500500500"
+    auth.LoginResponseDTO:
+      type: object
+      properties:
+        access_token:
+          type: string
+        message:
+          type: string
+        refresh_token:
+          type: string
+    auth.LogoutRequestDTO:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+    auth.RefreshTokenRequest:
+      type: object
+      properties:
+        refresh_token:
+          type: string
+          example: refresh_token
+    user.Role:
+      type: string
+      enum:
+        - superuser
+        - admin
+        - user
+      x-enum-varnames:
+        - RoleSuperuser
+        - RoleAdmin
+        - RoleUser
+    user.UserListResponse:
+      type: object
+      properties:
+        limit:
           type: integer
         page:
           type: integer
-        limit:
+        total:
           type: integer
-      required:
-        - users
-        - total
-        - page
-        - limit
-
-    CreateUserRequest:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/user.UserResponseDTO"
+    user.UserRequestDTO:
       type: object
-      properties:
-        first_name:
-          type: string
-        last_name:
-          type: string
-        middle_name:
-          type: string
-        phone:
-          type: string
-        password:
-          type: string
-        role:
-          type: string
-          enum: [admin, user]
-        photo:
-          type: string
-          format: binary
       required:
-        - first_name
-        - last_name
-        - phone
         - password
-        - role
-
-    UpdateUserRequest:
-      type: object
+        - phone
       properties:
         first_name:
           type: string
@@ -561,32 +474,76 @@ components:
           type: string
         middle_name:
           type: string
+        password:
+          type: string
+          example: Password123
         phone:
           type: string
-        password:
+          example: "+996500500500"
+        role:
+          $ref: "#/components/schemas/user.Role"
+        telegram:
+          type: string
+    user.UserResponseDTO:
+      type: object
+      properties:
+        created_at:
+          type: string
+        deleted_at:
+          type: string
+        first_name:
+          type: string
+        id:
           type: string
         is_active:
           type: boolean
+        last_name:
+          type: string
+        middle_name:
+          type: string
+        phone:
+          type: string
         photo:
           type: string
-          format: binary
-
-    UserStats:
+        role:
+          $ref: "#/components/schemas/user.Role"
+        telegram:
+          type: string
+        updated_at:
+          type: string
+    user.UserSelfUpdateDTO:
       type: object
       properties:
-        total:
-          type: integer
-        active:
-          type: integer
-        inactive:
-          type: integer
-        admins:
-          type: integer
-        new_this_month:
-          type: integer
-      required:
-        - total
-        - active
-        - inactive
-        - admins
-        - new_this_month
+        first_name:
+          type: string
+        last_name:
+          type: string
+        middle_name:
+          type: string
+        password:
+          type: string
+        phone:
+          type: string
+          example: "+996500500500"
+        telegram:
+          type: string
+    user.UserUpdateDTO:
+      type: object
+      properties:
+        first_name:
+          type: string
+        is_active:
+          type: boolean
+        last_name:
+          type: string
+        middle_name:
+          type: string
+        password:
+          type: string
+        phone:
+          type: string
+          example: "+996500500500"
+        role:
+          type: string
+        telegram:
+          type: string
