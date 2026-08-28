@@ -5,8 +5,8 @@ import (
 	"gin_auth_service/internal/domain/auditlog"
 	"time"
 
-	"uuid"
 	"github.com/jmoiron/sqlx"
+	"uuid"
 )
 
 // AuditLogDB represents the audit log record in the database.
