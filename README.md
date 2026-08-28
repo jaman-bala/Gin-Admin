@@ -63,6 +63,12 @@ Default superuser credentials are set via `ADMIN_DEFAULT_PHONE` and `ADMIN_DEFAU
 
 See [`backend/README.md`](backend/README.md) and [`frontend/README.md`](frontend/README.md) for per-service setup.
 
+## Guidelines
+
+- [Security checklist](docs/guidelines/security.md)
+- [Database: indexes & transactions](docs/guidelines/database.md)
+- [Redis caching](docs/guidelines/caching.md)
+
 ## Project layout
 
 ```
@@ -76,7 +82,8 @@ frontend/     pnpm workspace
     api-client-react/ Generated React Query hooks (orval)
     api-spec/         OpenAPI spec source
 deploy/       Docker Swarm stack file
-docs/screen/  UI screenshots
+docs/screen/       UI screenshots
+docs/guidelines/   Security / database / caching guidelines
 ```
 
 ## License
