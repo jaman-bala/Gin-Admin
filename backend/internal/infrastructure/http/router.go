@@ -175,7 +175,12 @@ func registerRoutes(server *gin.Engine, deps *routeDeps) {
 	users.Use(deps.authMid, deps.auditMid)
 	{
 		users.GET("/me", deps.userHdl.GetMe)
-		users.PUT("/me", deps.userHdl.UpdateMe)
+		// PATCH only: UpdateMe never resets an omitted field (only non-nil
+		// pointer fields in UserSelfUpdateDTO are applied), which is PATCH's
+		// contract, not PUT's (idempotent full replacement). A PUT alias
+		// used to be registered here pointing at the same partial-update
+		// handler, which is a false promise to any client that takes PUT's
+		// semantics at face value.
 		users.PATCH("/me", deps.userHdl.UpdateMe)
 
 		adminUsers := users.Group("")
@@ -186,8 +191,9 @@ func registerRoutes(server *gin.Engine, deps *routeDeps) {
 			adminUsers.GET("/stats", deps.analyticsHdl.GetUserStats)
 			adminUsers.GET("/:id", deps.userHdl.GetByID)
 			adminUsers.GET("/phone/:phone", deps.userHdl.GetByPhone)
+			// PATCH only — see the /me comment above; Patch() has the same
+			// partial-update contract.
 			adminUsers.PATCH("/:id", deps.userHdl.Patch)
-			adminUsers.PUT("/:id", deps.userHdl.Patch)
 			adminUsers.DELETE("/:id", deps.userHdl.Delete)
 		}
 	}
