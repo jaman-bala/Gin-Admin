@@ -3,7 +3,6 @@ package handler
 import (
 	"gin_auth_service/internal/application/user"
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"uuid"
@@ -58,17 +57,7 @@ func (h *UserHandler) GetMe(c *gin.Context) {
 // @Success 200 {object} user.UserListResponse
 // @Router /api/v1/users [get]
 func (h *UserHandler) GetAll(c *gin.Context) {
-	page, limit := 1, 10
-	if p := c.Query("page"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil && v > 0 {
-			page = v
-		}
-	}
-	if l := c.Query("limit"); l != "" {
-		if v, err := strconv.Atoi(l); err == nil && v > 0 {
-			limit = v
-		}
-	}
+	page, limit := parsePagination(c)
 
 	var isActive *bool
 	if ia := c.Query("is_active"); ia != "" {
@@ -134,7 +123,7 @@ func (h *UserHandler) GetByPhone(c *gin.Context) {
 // @Produce json
 // @Param user body user.UserSelfUpdateDTO true "Fields to update"
 // @Success 200 {object} user.UserResponseDTO
-// @Router /api/v1/users/me [put]
+// @Router /api/v1/users/me [patch]
 func (h *UserHandler) UpdateMe(c *gin.Context) {
 	uid, exists := c.Get("id")
 	if !exists {

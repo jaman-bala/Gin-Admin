@@ -31,7 +31,7 @@ func (h *AnalyticsHandler) GetUserStats(c *gin.Context) {
 	ctx := c.Request.Context()
 	stats, err := h.usecase.GetUserStats(ctx)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		respondError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, stats)

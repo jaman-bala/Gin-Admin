@@ -7,7 +7,6 @@ import (
 	"uuid"
 )
 
-
 type usecase struct {
 	repo auditlog.Repository
 }
@@ -25,7 +24,7 @@ func (uc *usecase) GetAll(ctx context.Context, page, limit int, entityID *uuid.U
 		return AuditLogListResponse{}, err
 	}
 
-	var dtos []ResponseDTO
+	dtos := make([]ResponseDTO, 0, len(logs))
 	for _, l := range logs {
 		var dto ResponseDTO
 		dto.FromModel(l)
@@ -46,7 +45,7 @@ func (uc *usecase) GetByUserID(ctx context.Context, userID uuid.UUID) ([]Respons
 		return nil, err
 	}
 
-	var response []ResponseDTO
+	response := make([]ResponseDTO, 0, len(logs))
 	for _, log := range logs {
 		var dto ResponseDTO
 		dto.FromModel(log)
