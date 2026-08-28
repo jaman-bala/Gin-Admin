@@ -12,6 +12,8 @@
 .DS_Store
 Thumbs.db
 
+CLAUDE.md
+
 # Backend — compiled binaries
 backend/bin/
 backend/main
