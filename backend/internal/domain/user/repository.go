@@ -20,6 +20,7 @@ type Repository interface {
 	GetWithFilters(ctx context.Context, params FilterParams) ([]*User, int, error)
 	GetID(ctx context.Context, id uuid.UUID) (*User, error)
 	Patch(ctx context.Context, user *User) error
+	PatchFields(ctx context.Context, id uuid.UUID, fields PatchData) error
 	Delete(ctx context.Context, id uuid.UUID) error
 	FindByPhone(ctx context.Context, phone string) (*User, error)
 }

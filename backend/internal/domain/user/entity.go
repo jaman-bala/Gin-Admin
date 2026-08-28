@@ -16,6 +16,8 @@ const (
 	RoleUser      Role = "user"
 )
 
+type PatchData map[string]any
+
 // User represents a user entity in the system.
 type User struct {
 	ID         uuid.UUID
@@ -24,15 +26,21 @@ type User struct {
 	MiddleName string
 	Phone      string
 	Password   string
-	Role     Role
-	Photo    string
-	Telegram string
+	Role       Role
+	Photo      string
+	Telegram   string
 
 	IsActive bool
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time
+
+	// Version is the optimistic-lock counter. Repository.Patch checks it in
+	// the WHERE clause and rejects the write if it no longer matches — set
+	// from whatever GetID/FindByPhone/GetWithFilters last read, never by
+	// callers.
+	Version int
 }
 
 // CheckPassword checks if the password matches.
