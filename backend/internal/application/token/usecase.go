@@ -5,6 +5,7 @@ import (
 	"fmt"
 	domainToken "gin_auth_service/internal/domain/token"
 	"gin_auth_service/internal/pkg/jwt"
+	appErrors "gin_auth_service/pkg/errors"
 	"time"
 
 	jwtlib "github.com/golang-jwt/jwt/v5"
@@ -74,11 +75,11 @@ func jtiFromToken(tokenString string) (string, error) {
 
 func (uc *usecase) BlacklistToken(ctx context.Context, tokenString string, expiry time.Time) error {
 	if tokenString == "" {
-		return fmt.Errorf("token string is required")
+		return appErrors.ErrInvalidToken
 	}
 	jti, err := jtiFromToken(tokenString)
 	if err != nil {
-		return fmt.Errorf("cannot blacklist token: %w", err)
+		return fmt.Errorf("%w: %v", appErrors.ErrInvalidToken, err)
 	}
 	ttl := time.Until(expiry)
 	if ttl <= 0 {
@@ -102,17 +103,17 @@ func (uc *usecase) IsTokenBlacklisted(ctx context.Context, tokenString string) (
 
 func (uc *usecase) GetTokenInfo(ctx context.Context, tokenString string) (*jwt.TokenInfo, error) {
 	if tokenString == "" {
-		return nil, fmt.Errorf("token string is required")
+		return nil, appErrors.ErrInvalidToken
 	}
 
 	token, err := uc.jwt.ParseToken(tokenString)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse token: %w", err)
+		return nil, fmt.Errorf("%w: %v", appErrors.ErrInvalidToken, err)
 	}
 
 	claims, ok := token.Claims.(jwtlib.MapClaims)
 	if !ok {
-		return nil, fmt.Errorf("invalid token claims")
+		return nil, appErrors.ErrInvalidToken
 	}
 
 	getStr := func(key string) string {
@@ -136,7 +137,7 @@ func (uc *usecase) GetTokenInfo(ctx context.Context, tokenString string) (*jwt.T
 
 	jti := getStr("jti")
 	if jti == "" {
-		return nil, fmt.Errorf("token missing jti claim")
+		return nil, appErrors.ErrInvalidToken
 	}
 
 	// Use JTI directly — token is already fully parsed above, no second parse needed.
@@ -145,7 +146,7 @@ func (uc *usecase) GetTokenInfo(ctx context.Context, tokenString string) (*jwt.T
 		return nil, fmt.Errorf("failed to check blacklist status: %w", err)
 	}
 	if isBlacklisted {
-		return nil, fmt.Errorf("token is blacklisted")
+		return nil, appErrors.ErrInvalidToken
 	}
 
 	return &jwt.TokenInfo{

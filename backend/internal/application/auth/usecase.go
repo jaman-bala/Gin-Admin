@@ -5,7 +5,6 @@ import (
 	stdErrors "errors"
 	"fmt"
 	"gin_auth_service/internal/application/token"
-	"gin_auth_service/internal/application/user"
 	domainUser "gin_auth_service/internal/domain/user"
 	"gin_auth_service/internal/pkg/hash"
 	"gin_auth_service/internal/pkg/utils"
@@ -20,16 +19,18 @@ import (
 // via timing analysis.
 var dummyHash, _ = hash.HashPassword("dummy-timing-equalizer")
 
-// UserReader is the minimal interface auth needs from the user domain.
-// Defined here (consumer side) to avoid importing the full user.UseCase.
-type UserReader interface {
-	GetByID(ctx context.Context, id uuid.UUID) (*user.UserResponseDTO, error)
+// PhotoResolver resolves a stored photo object key to a browsable URL.
+// Defined here (consumer side) so auth depends on a one-method shape, not on
+// application/file's full UseCase or application/user's DTOs; *file.usecase
+// already satisfies this as-is.
+type PhotoResolver interface {
+	GetFullURL(ctx context.Context, objectName string) (string, error)
 }
 
 type usecase struct {
 	userRepo      domainUser.Repository
 	tokenService  token.UseCase
-	userReader    UserReader
+	photoResolver PhotoResolver
 	accessExpiry  time.Duration
 	refreshExpiry time.Duration
 }
@@ -37,14 +38,14 @@ type usecase struct {
 func NewUseCase(
 	userRepo domainUser.Repository,
 	tokenService token.UseCase,
-	userReader UserReader,
+	photoResolver PhotoResolver,
 	accessExpiry time.Duration,
 	refreshExpiry time.Duration,
 ) UseCase {
 	return &usecase{
 		userRepo:      userRepo,
 		tokenService:  tokenService,
-		userReader:    userReader,
+		photoResolver: photoResolver,
 		accessExpiry:  accessExpiry,
 		refreshExpiry: refreshExpiry,
 	}
@@ -118,11 +119,11 @@ func (uc *usecase) RefreshToken(ctx context.Context, refreshToken string) (*Toke
 		return nil, errors.ErrInvalidUUID
 	}
 
-	userDTO, err := uc.userReader.GetByID(ctx, userID)
+	u, err := uc.userRepo.GetID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if !userDTO.IsActive {
+	if !u.IsActive {
 		return nil, errors.ErrAccountBlocked
 	}
 
@@ -133,15 +134,24 @@ func (uc *usecase) RefreshToken(ctx context.Context, refreshToken string) (*Toke
 		return nil, fmt.Errorf("failed to invalidate refresh token: %w", err)
 	}
 
-	pair, err := uc.tokenService.GenerateTokenPair(ctx, userDTO.ID.String(), string(userDTO.Role), userDTO.IsActive, uc.accessExpiry, uc.refreshExpiry)
+	pair, err := uc.tokenService.GenerateTokenPair(ctx, u.ID.String(), string(u.Role), u.IsActive, uc.accessExpiry, uc.refreshExpiry)
 	if err != nil {
 		return nil, fmt.Errorf("token generation error: %w", err)
+	}
+
+	var photoURL string
+	if u.Photo != "" {
+		if resolved, err := uc.photoResolver.GetFullURL(ctx, u.Photo); err == nil {
+			photoURL = resolved
+		}
+		// A presign failure must not fail the refresh — the client just gets
+		// an empty photo URL and can re-fetch the profile separately.
 	}
 
 	return &TokenResponseDTO{
 		AccessToken:  pair.AccessToken,
 		RefreshToken: pair.RefreshToken,
-		User:         *userDTO,
+		User:         AuthUserFromDomain(u, photoURL),
 		ExpiresAt:    pair.AccessExpiry,
 		Message:      "Token refreshed successfully",
 	}, nil
