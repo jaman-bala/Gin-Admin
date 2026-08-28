@@ -80,9 +80,9 @@ func buildDeps(db *sqlx.DB, cfg *config.Config) *routeDeps {
 	tokenSvc := token.NewUseCase(redisCache, jwtService)
 	auditSvc := auditlog.NewUseCase(auditRepo)
 	auditRecorder := auditlog.NewAsyncRecorder(auditRepo, 4096, 256, time.Second)
-	analyticsSvc := analytics.NewUseCase(analyticsRepo)
-	userSvc := user.NewUseCase(userRepo, fileSvc)
-	authSvc := auth.NewUseCase(userRepo, tokenSvc, userSvc, cfg.JWT.Expiry, cfg.JWT.RefreshExpiry)
+	analyticsSvc := analytics.NewUseCase(analyticsRepo, redisCache)
+	userSvc := user.NewUseCase(userRepo, fileSvc, redisCache)
+	authSvc := auth.NewUseCase(userRepo, tokenSvc, fileSvc, cfg.JWT.Expiry, cfg.JWT.RefreshExpiry)
 
 	return &routeDeps{
 		healthHdl:    handler.NewHealthHandler(db, redisCache, storage),
