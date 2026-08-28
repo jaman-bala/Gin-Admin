@@ -6,16 +6,17 @@ import (
 	"gin_auth_service/internal/domain/file"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"uuid"
 )
 
 type usecase struct {
-	repo           file.Repository
-	bucketName     string
-	initBucketOnce sync.Once
-	initBucketErr  error
+	repo        file.Repository
+	bucketName  string
+	bucketReady atomic.Bool
+	bucketMu    sync.Mutex
 }
 
 func NewUseCase(repo file.Repository, bucketName string) UseCase {
@@ -28,23 +29,31 @@ func NewUseCase(repo file.Repository, bucketName string) UseCase {
 	}
 }
 
-// ensureBucket creates the bucket on the first upload. If the first attempt
-// fails the Once is spent and subsequent calls return the cached error; the
-// container should be restarted in that case.
+// ensureBucket creates the bucket on first use and caches success only —
+// a transient MinIO failure (e.g. a brief network blip at startup) must not
+// permanently poison every future upload for the life of the process, so a
+// failed attempt is retried on the next call instead of cached forever.
 func (uc *usecase) ensureBucket(ctx context.Context) error {
-	uc.initBucketOnce.Do(func() {
-		exists, err := uc.repo.BucketExists(ctx, uc.bucketName)
-		if err != nil {
-			uc.initBucketErr = fmt.Errorf("bucket check: %w", err)
-			return
+	if uc.bucketReady.Load() {
+		return nil
+	}
+	uc.bucketMu.Lock()
+	defer uc.bucketMu.Unlock()
+	if uc.bucketReady.Load() {
+		return nil
+	}
+
+	exists, err := uc.repo.BucketExists(ctx, uc.bucketName)
+	if err != nil {
+		return fmt.Errorf("bucket check: %w", err)
+	}
+	if !exists {
+		if err := uc.repo.CreateBucket(ctx, uc.bucketName); err != nil {
+			return fmt.Errorf("bucket create: %w", err)
 		}
-		if !exists {
-			if err := uc.repo.CreateBucket(ctx, uc.bucketName); err != nil {
-				uc.initBucketErr = fmt.Errorf("bucket create: %w", err)
-			}
-		}
-	})
-	return uc.initBucketErr
+	}
+	uc.bucketReady.Store(true)
+	return nil
 }
 
 func (uc *usecase) UploadFile(ctx context.Context, input *FileUpload, folder string) (string, error) {
