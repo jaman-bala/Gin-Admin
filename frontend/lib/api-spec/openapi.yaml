@@ -191,7 +191,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/user.UserResponseDTO"
-    put:
+    patch:
       security:
         - BearerAuth: []
       tags:
@@ -465,8 +465,11 @@ components:
     user.UserRequestDTO:
       type: object
       required:
+        - first_name
+        - last_name
         - password
         - phone
+        - role
       properties:
         first_name:
           type: string
@@ -481,7 +484,11 @@ components:
           type: string
           example: "+996500500500"
         role:
-          $ref: "#/components/schemas/user.Role"
+          type: string
+          enum:
+            - user
+            - admin
+            - superuser
         telegram:
           type: string
     user.UserResponseDTO:
@@ -514,6 +521,8 @@ components:
     user.UserSelfUpdateDTO:
       type: object
       properties:
+        current_password:
+          type: string
         first_name:
           type: string
         last_name:
@@ -545,5 +554,9 @@ components:
           example: "+996500500500"
         role:
           type: string
+          enum:
+            - user
+            - admin
+            - superuser
         telegram:
           type: string

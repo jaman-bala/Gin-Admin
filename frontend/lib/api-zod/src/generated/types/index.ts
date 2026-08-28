@@ -24,6 +24,8 @@ export * from "./listUsersParams";
 export * from "./userRole";
 export * from "./userUserListResponse";
 export * from "./userUserRequestDTO";
+export * from "./userUserRequestDTORole";
 export * from "./userUserResponseDTO";
 export * from "./userUserSelfUpdateDTO";
 export * from "./userUserUpdateDTO";
+export * from "./userUserUpdateDTORole";

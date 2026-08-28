@@ -655,7 +655,7 @@ export const updateMe = async (
 ): Promise<UserUserResponseDTO> => {
   return customFetch<UserUserResponseDTO>(getUpdateMeUrl(), {
     ...options,
-    method: "PUT",
+    method: "PATCH",
     headers: { "Content-Type": "application/json", ...options?.headers },
     body: JSON.stringify(userUserSelfUpdateDTO),
   });

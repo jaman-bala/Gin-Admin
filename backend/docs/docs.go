@@ -300,7 +300,7 @@ const docTemplate = `{
                     }
                 }
             },
-            "put": {
+            "patch": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -701,8 +701,11 @@ const docTemplate = `{
         "user.UserRequestDTO": {
             "type": "object",
             "required": [
+                "first_name",
+                "last_name",
                 "password",
-                "phone"
+                "phone",
+                "role"
             ],
             "properties": {
                 "first_name": {
@@ -723,7 +726,12 @@ const docTemplate = `{
                     "example": "+996500500500"
                 },
                 "role": {
-                    "$ref": "#/definitions/user.Role"
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "admin",
+                        "superuser"
+                    ]
                 },
                 "telegram": {
                     "type": "string"
@@ -774,6 +782,9 @@ const docTemplate = `{
         "user.UserSelfUpdateDTO": {
             "type": "object",
             "properties": {
+                "current_password": {
+                    "type": "string"
+                },
                 "first_name": {
                     "type": "string"
                 },
@@ -818,7 +829,12 @@ const docTemplate = `{
                     "example": "+996500500500"
                 },
                 "role": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "admin",
+                        "superuser"
+                    ]
                 },
                 "telegram": {
                     "type": "string"

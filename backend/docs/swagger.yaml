@@ -123,12 +123,19 @@ definitions:
         example: "+996500500500"
         type: string
       role:
-        $ref: '#/definitions/user.Role'
+        enum:
+        - user
+        - admin
+        - superuser
+        type: string
       telegram:
         type: string
     required:
+    - first_name
+    - last_name
     - password
     - phone
+    - role
     type: object
   user.UserResponseDTO:
     properties:
@@ -159,6 +166,8 @@ definitions:
     type: object
   user.UserSelfUpdateDTO:
     properties:
+      current_password:
+        type: string
       first_name:
         type: string
       last_name:
@@ -189,6 +198,10 @@ definitions:
         example: "+996500500500"
         type: string
       role:
+        enum:
+        - user
+        - admin
+        - superuser
         type: string
       telegram:
         type: string
@@ -450,7 +463,7 @@ paths:
       summary: Get current user profile
       tags:
       - users
-    put:
+    patch:
       consumes:
       - application/json
       operationId: updateMe

@@ -131,12 +131,12 @@ export const ListUsersResponse = zod.object({
  * @summary Create user (admin only)
  */
 export const CreateUserBody = zod.object({
-  first_name: zod.string().optional(),
-  last_name: zod.string().optional(),
+  first_name: zod.string(),
+  last_name: zod.string(),
   middle_name: zod.string().optional(),
   password: zod.string(),
   phone: zod.string(),
-  role: zod.enum(["superuser", "admin", "user"]).optional(),
+  role: zod.enum(["user", "admin", "superuser"]),
   telegram: zod.string().optional(),
 });
 
@@ -162,6 +162,7 @@ export const GetMeResponse = zod.object({
  * @summary Update own profile
  */
 export const UpdateMeBody = zod.object({
+  current_password: zod.string().optional(),
   first_name: zod.string().optional(),
   last_name: zod.string().optional(),
   middle_name: zod.string().optional(),
@@ -261,7 +262,7 @@ export const UpdateUserBody = zod.object({
   middle_name: zod.string().optional(),
   password: zod.string().optional(),
   phone: zod.string().optional(),
-  role: zod.string().optional(),
+  role: zod.enum(["user", "admin", "superuser"]).optional(),
   telegram: zod.string().optional(),
 });
 

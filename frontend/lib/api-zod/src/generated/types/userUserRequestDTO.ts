@@ -5,14 +5,14 @@
  * API for managing users and authentication in the Auth Service application.
  * OpenAPI spec version: 1.0
  */
-import type { UserRole } from "./userRole";
+import type { UserUserRequestDTORole } from "./userUserRequestDTORole";
 
 export interface UserUserRequestDTO {
-  first_name?: string;
-  last_name?: string;
+  first_name: string;
+  last_name: string;
   middle_name?: string;
   password: string;
   phone: string;
-  role?: UserRole;
+  role: UserUserRequestDTORole;
   telegram?: string;
 }

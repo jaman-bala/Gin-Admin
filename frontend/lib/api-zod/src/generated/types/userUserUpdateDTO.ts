@@ -5,6 +5,7 @@
  * API for managing users and authentication in the Auth Service application.
  * OpenAPI spec version: 1.0
  */
+import type { UserUserUpdateDTORole } from "./userUserUpdateDTORole";
 
 export interface UserUserUpdateDTO {
   first_name?: string;
@@ -13,6 +14,6 @@ export interface UserUserUpdateDTO {
   middle_name?: string;
   password?: string;
   phone?: string;
-  role?: string;
+  role?: UserUserUpdateDTORole;
   telegram?: string;
 }

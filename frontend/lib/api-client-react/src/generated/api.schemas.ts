@@ -82,17 +82,27 @@ export interface UserUserListResponse {
   users?: UserUserResponseDTO[];
 }
 
+export type UserUserRequestDTORole =
+  (typeof UserUserRequestDTORole)[keyof typeof UserUserRequestDTORole];
+
+export const UserUserRequestDTORole = {
+  user: "user",
+  admin: "admin",
+  superuser: "superuser",
+} as const;
+
 export interface UserUserRequestDTO {
-  first_name?: string;
-  last_name?: string;
+  first_name: string;
+  last_name: string;
   middle_name?: string;
   password: string;
   phone: string;
-  role?: UserRole;
+  role: UserUserRequestDTORole;
   telegram?: string;
 }
 
 export interface UserUserSelfUpdateDTO {
+  current_password?: string;
   first_name?: string;
   last_name?: string;
   middle_name?: string;
@@ -100,6 +110,15 @@ export interface UserUserSelfUpdateDTO {
   phone?: string;
   telegram?: string;
 }
+
+export type UserUserUpdateDTORole =
+  (typeof UserUserUpdateDTORole)[keyof typeof UserUserUpdateDTORole];
+
+export const UserUserUpdateDTORole = {
+  user: "user",
+  admin: "admin",
+  superuser: "superuser",
+} as const;
 
 export interface UserUserUpdateDTO {
   first_name?: string;
@@ -108,7 +127,7 @@ export interface UserUserUpdateDTO {
   middle_name?: string;
   password?: string;
   phone?: string;
-  role?: string;
+  role?: UserUserUpdateDTORole;
   telegram?: string;
 }
 

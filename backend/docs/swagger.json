@@ -293,7 +293,7 @@
                     }
                 }
             },
-            "put": {
+            "patch": {
                 "security": [
                     {
                         "BearerAuth": []
@@ -694,8 +694,11 @@
         "user.UserRequestDTO": {
             "type": "object",
             "required": [
+                "first_name",
+                "last_name",
                 "password",
-                "phone"
+                "phone",
+                "role"
             ],
             "properties": {
                 "first_name": {
@@ -716,7 +719,12 @@
                     "example": "+996500500500"
                 },
                 "role": {
-                    "$ref": "#/definitions/user.Role"
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "admin",
+                        "superuser"
+                    ]
                 },
                 "telegram": {
                     "type": "string"
@@ -767,6 +775,9 @@
         "user.UserSelfUpdateDTO": {
             "type": "object",
             "properties": {
+                "current_password": {
+                    "type": "string"
+                },
                 "first_name": {
                     "type": "string"
                 },
@@ -811,7 +822,12 @@
                     "example": "+996500500500"
                 },
                 "role": {
-                    "type": "string"
+                    "type": "string",
+                    "enum": [
+                        "user",
+                        "admin",
+                        "superuser"
+                    ]
                 },
                 "telegram": {
                     "type": "string"
