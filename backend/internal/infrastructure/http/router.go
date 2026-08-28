@@ -106,6 +106,28 @@ func buildDeps(db *sqlx.DB, cfg *config.Config) *routeDeps {
 func SetupRoutes(db *sqlx.DB, cfg *config.Config) (*gin.Engine, func(context.Context) error) {
 	server := gin.Default()
 
+	// No reverse proxy in front of this service by default, so no X-Forwarded-*
+	// header should be trusted — otherwise c.ClientIP() (used by the login
+	// rate limiter and audit logging) can be spoofed by any client, trivially
+	// defeating brute-force protection. Set TRUSTED_PROXIES to the real
+	// proxy's IP/CIDR when one is actually in front of this service.
+	if err := server.SetTrustedProxies(cfg.Server.TrustedProxies); err != nil {
+		panic("invalid TRUSTED_PROXIES: " + err.Error())
+	}
+
+	server.Use(middleware.RequestIDMiddleware())
+	server.Use(middleware.MetricsMiddleware())
+	server.Use(cors.New(cors.Config{
+		AllowOrigins:     cfg.Server.CORSOrigins,
+		AllowMethods:     []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", middleware.RequestIDHeader},
+		AllowCredentials: true,
+	}))
+	server.Use(middleware.BodySizeLimit(cfg.Server.MaxBodyBytes))
+
+	// Registered after the global middleware above so /docs also goes through
+	// RequestID/Metrics/CORS/BodySizeLimit — Gin snapshots a route's middleware
+	// chain at registration time, so this must come after the server.Use calls.
 	server.GET("/docs", func(c *gin.Context) {
 		specJSON, err := swag.ReadDoc()
 		if err != nil {
@@ -125,16 +147,6 @@ func SetupRoutes(db *sqlx.DB, cfg *config.Config) (*gin.Engine, func(context.Con
 		c.Header("Content-Type", "text/html")
 		c.String(200, html)
 	})
-
-	server.Use(middleware.RequestIDMiddleware())
-	server.Use(middleware.MetricsMiddleware())
-	server.Use(cors.New(cors.Config{
-		AllowOrigins:     cfg.Server.CORSOrigins,
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", middleware.RequestIDHeader},
-		AllowCredentials: true,
-	}))
-	server.Use(middleware.BodySizeLimit(cfg.Server.MaxBodyBytes))
 
 	server.GET("/metrics", middleware.MetricsAuth(cfg.Server.MetricsToken), gin.WrapH(promhttp.Handler()))
 

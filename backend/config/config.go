@@ -28,6 +28,7 @@ type ServerConfig struct {
 	RunMigrations   bool
 	CORSOrigins     []string
 	MetricsToken    string
+	TrustedProxies []string
 }
 
 type DatabaseConfig struct {
@@ -80,6 +81,7 @@ func LoadConfig() (*Config, error) {
 			RunMigrations:   getEnvAsBool("RUN_MIGRATIONS", false),
 			CORSOrigins:     splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000,http://localhost:8085")),
 			MetricsToken:    readSecret("METRICS_TOKEN", ""),
+			TrustedProxies:  splitCSV(getEnv("TRUSTED_PROXIES", "")),
 		},
 		Database: DatabaseConfig{
 			Host:            getEnv("DB_HOST", ""),
@@ -139,11 +141,19 @@ func (c *Config) validate() error {
 	if c.JWT.Secret == "" {
 		return fmt.Errorf("SECRET_KEY is required")
 	}
+	// HS256 signing keys shorter than 32 bytes are brute-forceable; fail
+	// startup rather than serve tokens signed with a weak key.
+	if len(c.JWT.Secret) < 32 {
+		return fmt.Errorf("SECRET_KEY must be at least 32 characters")
+	}
 	if c.Minio.MinioAccessKey == "" {
 		return fmt.Errorf("MINIO_ACCESS_KEY is required")
 	}
 	if c.Minio.MinioSecretKey == "" {
 		return fmt.Errorf("MINIO_SECRET_KEY is required")
+	}
+	if c.Redis.Host == "" {
+		return fmt.Errorf("REDIS_HOST is required")
 	}
 	return nil
 }
