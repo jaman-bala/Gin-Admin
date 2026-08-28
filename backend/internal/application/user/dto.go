@@ -16,14 +16,22 @@ type UserListResponse struct {
 }
 
 // UserRequestDTO represents a request to create a new user.
+// Role is a plain string, not user.Role: swag treats a field typed with a
+// named enum type plus its own "oneof" validator as two separate enum
+// sources on the same property (an allOf $ref alongside a sibling `enum:`),
+// which the generated OpenAPI spec carries fine but the orval/Zod codegen
+// cannot — it emits a chained, invalid `.enum(...).enum(...)`. A plain
+// string + validate:"oneof=..." (matching UserUpdateDTO.Role below) gives a
+// single clean enum in the spec and keeps the generated frontend client
+// buildable.
 type UserRequestDTO struct {
-	FirstName  string    `json:"first_name"`
-	LastName   string    `json:"last_name"`
-	MiddleName string    `json:"middle_name"`
-	Password   string    `json:"password" validate:"required,strong_password" example:"Password123"`
-	Phone      string    `json:"phone"    validate:"required,e164"             example:"+996500500500"`
-	Telegram string    `json:"telegram"`
-	Role       user.Role `json:"role"`
+	FirstName  string `json:"first_name" validate:"required"`
+	LastName   string `json:"last_name"  validate:"required"`
+	MiddleName string `json:"middle_name"`
+	Password   string `json:"password" validate:"required,strong_password" example:"Password123"`
+	Phone      string `json:"phone"    validate:"required,e164"             example:"+996500500500"`
+	Telegram   string `json:"telegram"`
+	Role       string `json:"role" validate:"required,oneof=user admin superuser"`
 }
 
 // UserResponseDTO represents a user in a response.
@@ -33,10 +41,10 @@ type UserResponseDTO struct {
 	LastName   string     `json:"last_name"`
 	MiddleName string     `json:"middle_name"`
 	Phone      string     `json:"phone"`
-	Role     user.Role `json:"role"`
-	Photo    string    `json:"photo"`
-	Telegram string    `json:"telegram"`
-	IsActive bool      `json:"is_active"`
+	Role       user.Role  `json:"role"`
+	Photo      string     `json:"photo"`
+	Telegram   string     `json:"telegram"`
+	IsActive   bool       `json:"is_active"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
 	DeletedAt  *time.Time `json:"deleted_at"`
@@ -48,8 +56,8 @@ type UserUpdateDTO struct {
 	LastName   *string `json:"last_name"`
 	MiddleName *string `json:"middle_name"`
 	Phone      *string `json:"phone"     validate:"omitempty,e164" example:"+996500500500"`
-	Password   *string `json:"password"`
-	Role       *string `json:"role"`
+	Password   *string `json:"password"  validate:"omitempty,strong_password"`
+	Role       *string `json:"role"      validate:"omitempty,oneof=user admin superuser"`
 	Telegram   *string `json:"telegram"`
 	IsActive   *bool   `json:"is_active"`
 }

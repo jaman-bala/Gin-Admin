@@ -13,6 +13,7 @@ import (
 func InitCustomValidators() {
 	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
 		slog.Info("Registering custom validators")
+		v.SetTagName("validate")
 		// Register a custom password strength validator you can use via `validate:"strong_password"`
 		if err := v.RegisterValidation("strong_password", ValidateStrongPassword); err != nil {
 			slog.Error("Failed to register strong_password validator", "error", err)

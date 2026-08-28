@@ -66,7 +66,7 @@ func (uc *usecase) Create(ctx context.Context, req UserRequestDTO, photo *file.F
 		MiddleName: req.MiddleName,
 		Phone:      req.Phone,
 		Password:   hashedPassword,
-		Role:       req.Role,
+		Role:       domainUser.Role(req.Role),
 		IsActive:   true,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
