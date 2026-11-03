@@ -78,7 +78,9 @@ services:
     # Generates the S3 credentials config from SEAWEEDFS_ACCESS_KEY/SECRET_KEY,
     # then starts master + volume + filer + S3 gateway in one process.
     entrypoint: ["/seaweedfs-entrypoint.sh"]
-    command: ["server", "-ip=seaweedfs", "-ip.bind=0.0.0.0", "-filer", "-s3", "-s3.port=8333", "-metricsPort=9324"]
+    # -s3.iam=false: the embedded IAM/STS API is unused (identities come from
+    # the S3 config) and would only add attack surface.
+    command: ["server", "-ip=seaweedfs", "-ip.bind=0.0.0.0", "-filer", "-s3", "-s3.port=8333", "-s3.iam=false", "-metricsPort=9324"]
     ports:
       - "8333:8333" # S3 API
       - "9333:9333" # master UI
