@@ -30,7 +30,7 @@ func NewUseCase(repo file.Repository, bucketName string) UseCase {
 }
 
 // ensureBucket creates the bucket on first use and caches success only —
-// a transient MinIO failure (e.g. a brief network blip at startup) must not
+// a transient storage failure (e.g. a brief network blip at startup) must not
 // permanently poison every future upload for the life of the process, so a
 // failed attempt is retried on the next call instead of cached forever.
 func (uc *usecase) ensureBucket(ctx context.Context) error {

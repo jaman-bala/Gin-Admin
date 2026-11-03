@@ -48,19 +48,19 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: "6379"
       REDIS_DB: "0"
-      MINIO_HOST: minio
-      MINIO_PORT: "9000"
-      MINIO_BUCKET_NAME: avatars
-      MINIO_SSL: "false"
-      MINIO_PUBLIC_HOST: ${MINIO_PUBLIC_HOST:-localhost:9000}
+      SEAWEEDFS_HOST: seaweedfs
+      SEAWEEDFS_PORT: "8333"
+      SEAWEEDFS_BUCKET_NAME: avatars
+      SEAWEEDFS_SSL: "false"
+      SEAWEEDFS_PUBLIC_HOST: ${SEAWEEDFS_PUBLIC_HOST:-localhost:8333}
       JWT_EXPIRY_HOURS: "24"
       JWT_REFRESH_EXPIRY_HOURS: "168"
       ADMIN_DEFAULT_PHONE: ${ADMIN_DEFAULT_PHONE:-+996500500500}
     secrets:
       - db_password
       - secret_key
-      - minio_access_key
-      - minio_secret_key
+      - seaweedfs_access_key
+      - seaweedfs_secret_key
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
       interval: 30s
@@ -151,20 +151,26 @@ services:
     logging: *default-logging
     command: ["redis-server", "--appendonly", "yes"]
 
-  minio:
-    image: minio/minio:RELEASE.2024-03-30T09-41-56Z
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.52
     networks:
       - app
+      - monitoring # Prometheus scrapes :9324
     volumes:
-      - minio_data:/data
+      - seaweedfs_data:/data
     secrets:
-      - minio_access_key
-      - minio_secret_key
-    environment:
-      MINIO_ROOT_USER_FILE: /run/secrets/minio_access_key
-      MINIO_ROOT_PASSWORD_FILE: /run/secrets/minio_secret_key
+      - seaweedfs_access_key
+      - seaweedfs_secret_key
+    configs:
+      - source: seaweedfs_entrypoint
+        target: /seaweedfs-entrypoint.sh
+        mode: 0555
+    # Generates the S3 credentials config from the secrets above, then starts
+    # master + volume + filer + S3 gateway in one process.
+    entrypoint: ["/seaweedfs-entrypoint.sh"]
+    command: ["server", "-ip=seaweedfs", "-ip.bind=0.0.0.0", "-filer", "-s3", "-s3.port=8333", "-metricsPort=9324"]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8333/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -178,9 +184,8 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 256M
+          memory: 512M
     logging: *default-logging
-    command: server --console-address ":9001" /data
 
   # ── Monitoring ────────────────────────────────────────────────────────────────
 
@@ -314,7 +319,7 @@ volumes:
     driver: local
   redis_data:
     driver: local
-  minio_data:
+  seaweedfs_data:
     driver: local
   prometheus_data:
     driver: local
@@ -326,14 +331,16 @@ secrets:
     external: true
   secret_key:
     external: true
-  minio_access_key:
+  seaweedfs_access_key:
     external: true
-  minio_secret_key:
+  seaweedfs_secret_key:
     external: true
   grafana_admin_password:
     external: true
 
 configs:
+  seaweedfs_entrypoint:
+    file: ./seaweedfs/entrypoint.sh
   prometheus_config:
     file: ./monitoring/prometheus/prometheus.yml
   prometheus_alerts:

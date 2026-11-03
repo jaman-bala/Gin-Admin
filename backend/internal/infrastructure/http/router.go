@@ -12,9 +12,9 @@ import (
 	"gin_auth_service/internal/application/user"
 	"gin_auth_service/internal/infrastructure/http/handler"
 	"gin_auth_service/internal/infrastructure/http/middleware"
-	"gin_auth_service/internal/infrastructure/minio"
 	"gin_auth_service/internal/infrastructure/postgres"
 	"gin_auth_service/internal/infrastructure/redis"
+	"gin_auth_service/internal/infrastructure/seaweedfs"
 	"gin_auth_service/internal/pkg/jwt"
 	netpprof "net/http/pprof"
 	"strings"
@@ -46,7 +46,7 @@ type routeDeps struct {
 }
 
 // buildDeps initializes all infrastructure, application services, and handlers.
-// Panics on fatal infrastructure errors (Redis, MinIO) — fail fast rather than
+// Panics on fatal infrastructure errors (Redis, SeaweedFS) — fail fast rather than
 // serving requests against a broken dependency graph.
 func buildDeps(db *sqlx.DB, cfg *config.Config) *routeDeps {
 	// Infrastructure
@@ -59,24 +59,24 @@ func buildDeps(db *sqlx.DB, cfg *config.Config) *routeDeps {
 		panic("failed to connect to Redis: " + err.Error())
 	}
 
-	minioEndpoint := cfg.Minio.MinioHost
-	if !strings.Contains(minioEndpoint, ":") {
-		minioEndpoint += ":" + cfg.Minio.MinioPort
+	storageEndpoint := cfg.SeaweedFS.Host
+	if !strings.Contains(storageEndpoint, ":") {
+		storageEndpoint += ":" + cfg.SeaweedFS.Port
 	}
-	storage, err := minio.NewStorage(
-		minioEndpoint,
-		cfg.Minio.MinioAccessKey,
-		cfg.Minio.MinioSecretKey,
-		cfg.Minio.MinioSSL,
-		cfg.Minio.MinioPublicHost,
+	storage, err := seaweedfs.NewStorage(
+		storageEndpoint,
+		cfg.SeaweedFS.AccessKey,
+		cfg.SeaweedFS.SecretKey,
+		cfg.SeaweedFS.SSL,
+		cfg.SeaweedFS.PublicHost,
 	)
 	if err != nil {
-		panic("failed to connect to MinIO: " + err.Error())
+		panic("failed to init SeaweedFS storage: " + err.Error())
 	}
 
 	// Application services
 	jwtService := jwt.NewJWTService(cfg.JWT.Secret)
-	fileSvc := file.NewUseCase(storage, cfg.Minio.MinioBucket)
+	fileSvc := file.NewUseCase(storage, cfg.SeaweedFS.Bucket)
 	tokenSvc := token.NewUseCase(redisCache, jwtService)
 	auditSvc := auditlog.NewUseCase(auditRepo)
 	auditRecorder := auditlog.NewAsyncRecorder(auditRepo, 4096, 256, time.Second)

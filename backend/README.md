@@ -7,7 +7,7 @@ Clean-architecture REST API for the Gin Admin panel. Handles authentication, use
 - **Go 1.25** + **Gin** — HTTP framework
 - **PostgreSQL 17** — primary database (sqlx)
 - **Redis** — token blacklist + rate limiting
-- **MinIO** — S3-compatible object storage for avatars
+- **SeaweedFS** — object storage for avatars (via its S3-compatible API)
 - **Goose** — SQL migrations
 - **Swaggo** — OpenAPI spec generation (served via Scalar UI)
 
@@ -26,18 +26,19 @@ Key variables:
 | `SERVER_PORT` | HTTP listen port |
 | `DB_*` | PostgreSQL connection |
 | `REDIS_HOST`, `REDIS_PORT` | Redis connection |
-| `MINIO_HOST` | MinIO host **inside Docker network** |
-| `MINIO_PUBLIC_HOST` | MinIO host **visible to the browser** (for presigned URLs) |
+| `SEAWEEDFS_HOST`, `SEAWEEDFS_PORT` | SeaweedFS S3 gateway **inside Docker network** |
+| `SEAWEEDFS_PUBLIC_HOST` | SeaweedFS S3 host **visible to the browser** (for presigned URLs) |
+| `SEAWEEDFS_ACCESS_KEY`, `SEAWEEDFS_SECRET_KEY` | S3 credentials (also used by the SeaweedFS container) |
 | `SECRET_KEY` | JWT signing secret (min 32 chars) |
 | `ADMIN_DEFAULT_PHONE` | Phone number for the auto-created superuser |
 | `ADMIN_DEFAULT_PASSWORD` | Password for the auto-created superuser |
 
-> `MINIO_HOST` and `MINIO_PUBLIC_HOST` serve different purposes: the backend uses `MINIO_HOST` to connect to MinIO internally (e.g., `minio` in Docker), while presigned URLs returned to clients use `MINIO_PUBLIC_HOST` (e.g., `localhost:9000`).
+> `SEAWEEDFS_HOST` and `SEAWEEDFS_PUBLIC_HOST` serve different purposes: the backend uses `SEAWEEDFS_HOST` to connect to SeaweedFS internally (e.g., `seaweedfs` in Docker), while presigned URLs returned to clients use `SEAWEEDFS_PUBLIC_HOST` (e.g., `localhost:8333`).
 
 ## Running locally
 
 ```bash
-# Start dependencies (postgres, redis, minio) via docker compose or locally
+# Start dependencies (postgres, redis, seaweedfs) via docker compose or locally
 # then:
 make run
 ```
@@ -72,7 +73,7 @@ internal/
   infrastructure/
     postgres/        sqlx repository implementations
     redis/           token blacklist + rate limit
-    minio/           object storage
+    seaweedfs/       object storage (S3 API)
     http/
       router.go      Gin setup, middleware wiring, route registration
       handler/       thin HTTP handlers
@@ -99,7 +100,7 @@ All dependency wiring happens in `router.go:buildDeps()`. Handlers never call in
 | DELETE | `/api/v1/users/:id` | Admin | Soft-delete user |
 | GET | `/api/v1/users/stats` | Admin | Analytics (total, active, admins, new) |
 | GET | `/api/v1/audit` | Admin | Audit log (paginated) |
-| GET | `/health` | — | Health check (db, redis, minio) |
+| GET | `/health` | — | Health check (db, redis, storage) |
 
 Full interactive docs: `http://localhost:<SERVER_PORT>/docs`
 

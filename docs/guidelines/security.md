@@ -93,7 +93,7 @@ usecase or a query.
   Swarm-secrets path and encourages committing a fallback value that looks
   like a real credential.
 - Don't hardcode a non-empty fallback for anything that is actually a
-  secret (see `SECRET_KEY`, `DB_PASSWORD`, `MINIO_SECRET_KEY` — all default
+  secret (see `SECRET_KEY`, `DB_PASSWORD`, `SEAWEEDFS_SECRET_KEY` — all default
   to `""`, forcing an explicit value in every environment).
 
 ## Client-side trust

@@ -34,7 +34,7 @@ scrape_configs:
     static_configs:
       - targets: ['postgres-exporter:9187']
 
-  - job_name: 'minio'
-    metrics_path: /minio/v2/metrics/cluster
+  - job_name: 'seaweedfs'
+    metrics_path: /metrics
     static_configs:
-      - targets: ['minio:9000']
+      - targets: ['seaweedfs:9324']

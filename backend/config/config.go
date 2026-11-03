@@ -12,11 +12,11 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
-	Redis    RedisConfig
-	Minio    MinioConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	JWT       JWTConfig
+	Redis     RedisConfig
+	SeaweedFS SeaweedFSConfig
 }
 
 type ServerConfig struct {
@@ -28,7 +28,7 @@ type ServerConfig struct {
 	RunMigrations   bool
 	CORSOrigins     []string
 	MetricsToken    string
-	TrustedProxies []string
+	TrustedProxies  []string
 }
 
 type DatabaseConfig struct {
@@ -56,14 +56,15 @@ type RedisConfig struct {
 	DB       int
 }
 
-type MinioConfig struct {
-	MinioHost       string
-	MinioPublicHost string // Public endpoint for browser URLs (e.g., localhost:9000)
-	MinioBucket     string
-	MinioPort       string
-	MinioAccessKey  string
-	MinioSecretKey  string
-	MinioSSL        bool
+// SeaweedFSConfig configures the SeaweedFS S3 gateway used for file storage.
+type SeaweedFSConfig struct {
+	Host       string // Host reachable from the backend (e.g. "seaweedfs" in Docker)
+	PublicHost string // host:port visible to the browser, used for presigned URLs
+	Bucket     string
+	Port       string
+	AccessKey  string
+	SecretKey  string
+	SSL        bool
 }
 
 func LoadConfig() (*Config, error) {
@@ -107,14 +108,14 @@ func LoadConfig() (*Config, error) {
 			Password: readSecret("REDIS_PASSWORD", ""),
 			DB:       getEnvAsInt("REDIS_DB", 0),
 		},
-		Minio: MinioConfig{
-			MinioHost:       getEnv("MINIO_HOST", ""),
-			MinioPublicHost: getEnv("MINIO_PUBLIC_HOST", "localhost:9000"),
-			MinioBucket:     getEnv("MINIO_BUCKET_NAME", ""),
-			MinioPort:       getEnv("MINIO_PORT", "9000"),
-			MinioAccessKey:  readSecret("MINIO_ACCESS_KEY", ""),
-			MinioSecretKey:  readSecret("MINIO_SECRET_KEY", ""),
-			MinioSSL:        getEnvAsBool("MINIO_SSL", false),
+		SeaweedFS: SeaweedFSConfig{
+			Host:       getEnv("SEAWEEDFS_HOST", ""),
+			PublicHost: getEnv("SEAWEEDFS_PUBLIC_HOST", "localhost:8333"),
+			Bucket:     getEnv("SEAWEEDFS_BUCKET_NAME", ""),
+			Port:       getEnv("SEAWEEDFS_PORT", "8333"),
+			AccessKey:  readSecret("SEAWEEDFS_ACCESS_KEY", ""),
+			SecretKey:  readSecret("SEAWEEDFS_SECRET_KEY", ""),
+			SSL:        getEnvAsBool("SEAWEEDFS_SSL", false),
 		},
 	}
 
@@ -146,11 +147,14 @@ func (c *Config) validate() error {
 	if len(c.JWT.Secret) < 32 {
 		return fmt.Errorf("SECRET_KEY must be at least 32 characters")
 	}
-	if c.Minio.MinioAccessKey == "" {
-		return fmt.Errorf("MINIO_ACCESS_KEY is required")
+	if c.SeaweedFS.Host == "" {
+		return fmt.Errorf("SEAWEEDFS_HOST is required")
 	}
-	if c.Minio.MinioSecretKey == "" {
-		return fmt.Errorf("MINIO_SECRET_KEY is required")
+	if c.SeaweedFS.AccessKey == "" {
+		return fmt.Errorf("SEAWEEDFS_ACCESS_KEY is required")
+	}
+	if c.SeaweedFS.SecretKey == "" {
+		return fmt.Errorf("SEAWEEDFS_SECRET_KEY is required")
 	}
 	if c.Redis.Host == "" {
 		return fmt.Errorf("REDIS_HOST is required")
