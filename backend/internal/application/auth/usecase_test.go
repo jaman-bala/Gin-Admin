@@ -104,11 +104,48 @@ func (f fakePhotoResolver) GetFullURL(_ context.Context, name string) (string, e
 
 // --- helpers -------------------------------------------------------------
 
+// memLimiter mimics the Redis counter: Increment takes a slot, Release gives
+// one back and drops the key at zero.
+type memLimiter struct {
+	mu     sync.Mutex
+	n      map[string]int64
+	incErr error
+	relErr error
+}
+
+func newMemLimiter() *memLimiter { return &memLimiter{n: map[string]int64{}} }
+
+func (l *memLimiter) Increment(_ context.Context, key string, _ time.Duration) (int64, error) {
+	if l.incErr != nil {
+		return 0, l.incErr
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.n[key]++
+	return l.n[key], nil
+}
+
+func (l *memLimiter) Release(_ context.Context, key string) error {
+	if l.relErr != nil {
+		return l.relErr
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.n[key] > 0 {
+		l.n[key]--
+	}
+	if l.n[key] == 0 {
+		delete(l.n, key)
+	}
+	return nil
+}
+
 type env struct {
-	uc     UseCase
-	users  *fakeUserRepo
-	tokens *memTokenRepo
-	svc    tokenUC.UseCase
+	uc      UseCase
+	users   *fakeUserRepo
+	tokens  *memTokenRepo
+	svc     tokenUC.UseCase
+	limiter *memLimiter
 }
 
 func newEnv(t *testing.T, photo PhotoResolver, users ...*domainUser.User) *env {
@@ -119,11 +156,13 @@ func newEnv(t *testing.T, photo PhotoResolver, users ...*domainUser.User) *env {
 	if photo == nil {
 		photo = fakePhotoResolver{url: "https://cdn.test/"}
 	}
+	limiter := newMemLimiter()
 	return &env{
-		uc:     NewUseCase(repo, svc, photo, 15*time.Minute, time.Hour),
-		users:  repo,
-		tokens: tokens,
-		svc:    svc,
+		uc:      NewUseCase(limiter, repo, svc, photo, 15*time.Minute, time.Hour),
+		users:   repo,
+		tokens:  tokens,
+		svc:     svc,
+		limiter: limiter,
 	}
 }
 

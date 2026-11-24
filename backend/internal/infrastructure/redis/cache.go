@@ -28,6 +28,22 @@ end
 return n
 `)
 
+// releaseScript gives one slot back (DECR) but only while the counter exists,
+// and deletes it at zero. A bare DECR on a key that already expired would
+// create it as -1 with no TTL: that counter would then live forever and
+// silently grant extra attempts.
+var releaseScript = goredis.NewScript(`
+if redis.call('EXISTS', KEYS[1]) == 0 then
+    return 0
+end
+local n = redis.call('DECR', KEYS[1])
+if n <= 0 then
+    redis.call('DEL', KEYS[1])
+    return 0
+end
+return n
+`)
+
 // NewCache connects to Redis and verifies connectivity with a Ping.
 func NewCache(cfg *config.Config) (*Cache, error) {
 	if cfg.Redis.Host == "" {
@@ -81,9 +97,11 @@ func (c *Cache) Increment(ctx context.Context, key string, window time.Duration)
 	return incrementScript.Run(ctx, c.client, []string{key}, window.Milliseconds()).Int64()
 }
 
-// Reset deletes the rate limit counter for key (called on successful login).
-func (c *Cache) Reset(ctx context.Context, key string) error {
-	return c.client.Del(ctx, key).Err()
+// Release gives back one slot taken by Increment. Used when an attempt
+// succeeded: only that attempt's own slot is returned, so failed attempts keep
+// counting and one success can never wipe an attacker's failure history.
+func (c *Cache) Release(ctx context.Context, key string) error {
+	return releaseScript.Run(ctx, c.client, []string{key}).Err()
 }
 
 // Ping checks Redis connectivity.

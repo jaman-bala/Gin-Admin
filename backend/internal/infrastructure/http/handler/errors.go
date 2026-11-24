@@ -26,6 +26,8 @@ func respondError(c *gin.Context, err error) {
 	case errors.Is(err, appErrors.ErrAccountBlocked),
 		errors.Is(err, appErrors.ErrForbiddenRole):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+	case errors.Is(err, appErrors.ErrTooManyAttempts):
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
 	case errors.Is(err, appErrors.ErrInvalidUUID),
 		errors.Is(err, appErrors.ErrInvalidPatchField):
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})

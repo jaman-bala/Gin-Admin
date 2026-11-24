@@ -279,6 +279,7 @@ func TestRespondError_StatusMapping(t *testing.T) {
 		{appErrors.ErrAccountBlocked, http.StatusForbidden},
 		{appErrors.ErrForbiddenRole, http.StatusForbidden},
 		{appErrors.ErrLastSuperuser, http.StatusConflict},
+		{appErrors.ErrTooManyAttempts, http.StatusTooManyRequests},
 		{appErrors.ErrInvalidUUID, http.StatusBadRequest},
 		{appErrors.ErrInvalidPatchField, http.StatusBadRequest},
 		{fmt.Errorf("ctx: %w", appErrors.ErrUserNotFound), http.StatusNotFound},

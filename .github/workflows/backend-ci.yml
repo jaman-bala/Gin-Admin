@@ -48,6 +48,16 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # Real Redis for the rate-limit counter scripts (Lua): their edge cases
+      # (expired keys, negative counters) only exist in the real server.
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -79,12 +89,13 @@ jobs:
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}
           "$(go env GOPATH)/bin/golangci-lint" run ./...
 
-      # Unit tests use in-memory fakes. PostgreSQL integration tests run
-      # against the service above; the SeaweedFS ones skip themselves
+      # Unit tests use in-memory fakes. PostgreSQL and Redis integration tests
+      # run against the services above; the SeaweedFS ones skip themselves
       # without SEAWEEDFS_TEST_*.
       - name: Test
         env:
           POSTGRES_TEST_DSN: host=localhost port=5432 user=postgres password=test dbname=test sslmode=disable
+          REDIS_TEST_ADDR: localhost:6379
         run: go test -race -count=1 ./...
 
   vulncheck:

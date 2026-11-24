@@ -9,6 +9,7 @@ import (
 	"gin_auth_service/internal/pkg/hash"
 	"gin_auth_service/internal/pkg/utils"
 	"gin_auth_service/pkg/errors"
+	"log/slog"
 	"time"
 
 	"uuid"
@@ -27,7 +28,30 @@ type PhotoResolver interface {
 	GetFullURL(ctx context.Context, objectName string) (string, error)
 }
 
+// AttemptLimiter counts login attempts per account. Defined here (consumer
+// side); *redis.Cache satisfies it as-is.
+type AttemptLimiter interface {
+	// Increment atomically takes a slot and returns the counter after it.
+	Increment(ctx context.Context, key string, window time.Duration) (int64, error)
+	// Release gives that slot back.
+	Release(ctx context.Context, key string) error
+}
+
+const (
+	// accountMaxFailures caps failed logins per account per window,
+	// regardless of how many IPs they come from: the defense against a
+	// distributed guess that the per-IP limiter cannot see.
+	//
+	// Trade-off: anyone who knows a phone number can keep that account's
+	// login locked by failing on purpose. Kept high enough (10) that an
+	// honest typo streak never trips it, short enough (15 min) to bound the
+	// damage.
+	accountMaxFailures int64 = 10
+	accountWindow            = 15 * time.Minute
+)
+
 type usecase struct {
+	limiter       AttemptLimiter
 	userRepo      domainUser.Repository
 	tokenService  token.UseCase
 	photoResolver PhotoResolver
@@ -36,6 +60,7 @@ type usecase struct {
 }
 
 func NewUseCase(
+	limiter AttemptLimiter,
 	userRepo domainUser.Repository,
 	tokenService token.UseCase,
 	photoResolver PhotoResolver,
@@ -43,6 +68,7 @@ func NewUseCase(
 	refreshExpiry time.Duration,
 ) UseCase {
 	return &usecase{
+		limiter:       limiter,
 		userRepo:      userRepo,
 		tokenService:  tokenService,
 		photoResolver: photoResolver,
@@ -51,8 +77,40 @@ func NewUseCase(
 	}
 }
 
+// Login enforces a per-account failure budget around the credential check.
+// The slot is reserved before the password is looked at (so concurrent guesses
+// cannot overshoot the limit) and given back only on success, which means
+// failures accumulate and a success never erases them. The budget applies to
+// every phone number, existing or not, so a 429 reveals nothing about which
+// accounts exist.
 func (uc *usecase) Login(ctx context.Context, req LoginRequestDTO) (*LoginResponseDTO, error) {
 	req.Phone = utils.NormalizePhone(req.Phone)
+
+	key := "rate_limit:login:phone:" + req.Phone
+	reserved := false
+	if uc.limiter != nil {
+		n, err := uc.limiter.Increment(ctx, key, accountWindow)
+		switch {
+		case err != nil:
+			// Fail open: a Redis outage must not lock everyone out.
+			slog.Warn("account login limiter unavailable, failing open", "error", err)
+		case n > accountMaxFailures:
+			return nil, errors.ErrTooManyAttempts
+		default:
+			reserved = true
+		}
+	}
+
+	resp, err := uc.authenticate(ctx, req)
+	if err == nil && reserved {
+		if relErr := uc.limiter.Release(ctx, key); relErr != nil {
+			slog.Warn("account login limiter release failed", "error", relErr)
+		}
+	}
+	return resp, err
+}
+
+func (uc *usecase) authenticate(ctx context.Context, req LoginRequestDTO) (*LoginResponseDTO, error) {
 	u, err := uc.userRepo.FindByPhone(ctx, req.Phone)
 	if err != nil {
 		if stdErrors.Is(err, errors.ErrUserNotFound) {
