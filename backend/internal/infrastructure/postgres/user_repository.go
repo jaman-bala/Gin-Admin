@@ -237,8 +237,21 @@ func (r *userRepository) PatchFields(ctx context.Context, id uuid.UUID, fields u
 	return nil
 }
 
+// LockActiveSuperusers takes row locks on all active superusers (FOR UPDATE).
+// A concurrent transaction running the same statement waits for ours to
+// finish and then re-evaluates the WHERE clause against the committed result,
+// so two superusers cannot demote each other at the same time and leave none.
+func (r *userRepository) LockActiveSuperusers(ctx context.Context) (int, error) {
+	var ids []uuid.UUID
+	const query = `SELECT id FROM users WHERE role = 'superuser' AND is_active AND deleted_at IS NULL ORDER BY id FOR UPDATE`
+	if err := sqlx.SelectContext(ctx, r.q(ctx), &ids, query); err != nil {
+		return 0, err
+	}
+	return len(ids), nil
+}
+
 func (r *userRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	query := `UPDATE users SET deleted_at = NOW() WHERE id = $1`
+	query := `UPDATE users SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`
 	_, err := r.q(ctx).ExecContext(ctx, query, id)
 	return err
 }

@@ -65,6 +65,7 @@ func (r *fakeUserRepo) PatchFields(context.Context, uuid.UUID, domainUser.PatchD
 	panic("unused")
 }
 func (r *fakeUserRepo) Delete(context.Context, uuid.UUID) error { panic("unused") }
+func (r *fakeUserRepo) LockActiveSuperusers(context.Context) (int, error) { panic("unused") }
 
 // memTokenRepo is an in-memory domain/token.Repository (Redis stand-in).
 type memTokenRepo struct {

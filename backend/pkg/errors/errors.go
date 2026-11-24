@@ -11,5 +11,7 @@ var (
 	ErrPhoneAlreadyExists = errors.New("phone already exists")
 	ErrConflict           = errors.New("conflict")
 	ErrInvalidPatchField  = errors.New("invalid patch field")
+	ErrForbiddenRole      = errors.New("insufficient privileges for this operation")
+	ErrLastSuperuser      = errors.New("cannot remove, deactivate or demote the last active superuser")
 	ErrStaleWrite         = errors.New("resource was modified by another request, please reload and retry")
 )

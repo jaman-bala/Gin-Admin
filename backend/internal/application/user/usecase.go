@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"gin_auth_service/internal/application/file"
+	"gin_auth_service/internal/domain/tx"
 	domainUser "gin_auth_service/internal/domain/user"
 	"gin_auth_service/internal/pkg/hash"
 	"gin_auth_service/internal/pkg/utils"
@@ -51,14 +52,16 @@ type Cache interface {
 
 type usecase struct {
 	repo        domainUser.Repository
+	tx          tx.Manager
 	fileService file.UseCase
 	cache       Cache // nil disables caching entirely (e.g. in tests)
 }
 
 // NewUseCase creates a new instance of UseCase. cache may be nil, in which
-// case every call goes straight to the repository.
-func NewUseCase(repo domainUser.Repository, fileService file.UseCase, cache Cache) UseCase {
-	return &usecase{repo: repo, fileService: fileService, cache: cache}
+// case every call goes straight to the repository. txm makes the
+// read-authorize-write sequence of admin mutations atomic.
+func NewUseCase(repo domainUser.Repository, txm tx.Manager, fileService file.UseCase, cache Cache) UseCase {
+	return &usecase{repo: repo, tx: txm, fileService: fileService, cache: cache}
 }
 
 // GetAll returns a page of users.
@@ -191,7 +194,10 @@ func (uc *usecase) invalidateListCache(ctx context.Context) {
 	}
 }
 
-func (uc *usecase) Create(ctx context.Context, req UserRequestDTO, photo *file.FileUpload) (*UserResponseDTO, error) {
+func (uc *usecase) Create(ctx context.Context, actor Actor, req UserRequestDTO, photo *file.FileUpload) (*UserResponseDTO, error) {
+	if err := authorizeAssign(actor, domainUser.Role(req.Role)); err != nil {
+		return nil, err
+	}
 	req.Phone = utils.NormalizePhone(req.Phone)
 	hashedPassword, err := hash.HashPassword(req.Password)
 	if err != nil {
@@ -204,6 +210,7 @@ func (uc *usecase) Create(ctx context.Context, req UserRequestDTO, photo *file.F
 		LastName:   req.LastName,
 		MiddleName: req.MiddleName,
 		Phone:      req.Phone,
+		Telegram:   req.Telegram,
 		Password:   hashedPassword,
 		Role:       domainUser.Role(req.Role),
 		IsActive:   true,
@@ -317,10 +324,22 @@ func (uc *usecase) PatchSelf(ctx context.Context, id uuid.UUID, req UserSelfUpda
 	return &dto, nil
 }
 
-// Patch is the admin-only update; it allows changing Role and IsActive.
-func (uc *usecase) Patch(ctx context.Context, id uuid.UUID, req UserUpdateDTO, photo *file.FileUpload) (*UserResponseDTO, error) {
+// Patch is the admin update; it allows changing Role and IsActive. The actor
+// may only touch users up to their own level, may only assign roles up to
+// their own level, and can never remove the last active superuser. The whole
+// read-authorize-write runs in one transaction so the superuser count cannot
+// change underneath the check.
+func (uc *usecase) Patch(ctx context.Context, actor Actor, id uuid.UUID, req UserUpdateDTO, photo *file.FileUpload) (*UserResponseDTO, error) {
 	if id == uuid.Nil() {
 		return nil, errors.ErrInvalidUUID
+	}
+	if err := authorizeAdminAction(actor); err != nil {
+		return nil, err
+	}
+	if req.Role != nil {
+		if err := authorizeAssign(actor, domainUser.Role(*req.Role)); err != nil {
+			return nil, err
+		}
 	}
 
 	if req.Phone != nil {
@@ -328,31 +347,24 @@ func (uc *usecase) Patch(ctx context.Context, id uuid.UUID, req UserUpdateDTO, p
 		req.Phone = &normalized
 	}
 
-	u, err := uc.repo.GetID(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-
-	req.ApplyToModel(u)
-
+	// Hash before opening the transaction: bcrypt is slow and must not hold
+	// row locks.
+	var hashed string
 	if req.Password != nil && *req.Password != "" {
-		hashed, err := hash.HashPassword(*req.Password)
+		h, err := hash.HashPassword(*req.Password)
 		if err != nil {
 			return nil, fmt.Errorf("error hashing password: %w", err)
 		}
-		u.Password = hashed
+		hashed = h
 	}
 
-	if photo != nil {
-		filePath, err := uc.fileService.UploadFile(ctx, photo, "user")
-		if err != nil {
-			return nil, fmt.Errorf("error saving photo: %w", err)
-		}
-		u.Photo = filePath
-	}
-
-	u.UpdatedAt = time.Now()
-	if err := uc.repo.Patch(ctx, u); err != nil {
+	var u *domainUser.User
+	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+		var err error
+		u, err = uc.patchAuthorized(ctx, actor, id, req, hashed, photo)
+		return err
+	})
+	if err != nil {
 		return nil, err
 	}
 	uc.invalidateListCache(ctx)
@@ -363,14 +375,85 @@ func (uc *usecase) Patch(ctx context.Context, id uuid.UUID, req UserUpdateDTO, p
 	return &dto, nil
 }
 
-func (uc *usecase) Delete(ctx context.Context, id uuid.UUID) error {
+// patchAuthorized is the body of Patch's transaction: load the target, check
+// the actor may act on it, guard the last superuser, apply and persist.
+// hashed is the already-computed password hash, or "" to keep the password.
+func (uc *usecase) patchAuthorized(ctx context.Context, actor Actor, id uuid.UUID, req UserUpdateDTO, hashed string, photo *file.FileUpload) (*domainUser.User, error) {
+	target, err := uc.repo.GetID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := authorizeManage(actor, target); err != nil {
+		return nil, err
+	}
+
+	wasActiveSuperuser := isActiveSuperuser(target)
+	req.ApplyToModel(target)
+	if wasActiveSuperuser && !isActiveSuperuser(target) {
+		if err := uc.ensureAnotherSuperuser(ctx); err != nil {
+			return nil, err
+		}
+	}
+
+	if hashed != "" {
+		target.Password = hashed
+	}
+	if photo != nil {
+		filePath, err := uc.fileService.UploadFile(ctx, photo, "user")
+		if err != nil {
+			return nil, fmt.Errorf("error saving photo: %w", err)
+		}
+		target.Photo = filePath
+	}
+
+	target.UpdatedAt = time.Now()
+	if err := uc.repo.Patch(ctx, target); err != nil {
+		return nil, err
+	}
+	return target, nil
+}
+
+// Delete soft-deletes a user under the same rules as Patch.
+func (uc *usecase) Delete(ctx context.Context, actor Actor, id uuid.UUID) error {
 	if id == uuid.Nil() {
 		return errors.ErrInvalidUUID
 	}
-	if err := uc.repo.Delete(ctx, id); err != nil {
+	if err := authorizeAdminAction(actor); err != nil {
+		return err
+	}
+	err := uc.tx.WithinTx(ctx, func(ctx context.Context) error {
+		target, err := uc.repo.GetID(ctx, id)
+		if err != nil {
+			return err
+		}
+		if err := authorizeManage(actor, target); err != nil {
+			return err
+		}
+		if isActiveSuperuser(target) {
+			if err := uc.ensureAnotherSuperuser(ctx); err != nil {
+				return err
+			}
+		}
+		return uc.repo.Delete(ctx, id)
+	})
+	if err != nil {
 		return err
 	}
 	uc.invalidateListCache(ctx)
+	return nil
+}
+
+// ensureAnotherSuperuser fails with ErrLastSuperuser unless at least two
+// active superusers exist right now (the caller is about to remove one of
+// them). The repository locks those rows until the transaction ends.
+func (uc *usecase) ensureAnotherSuperuser(ctx context.Context) error {
+	n, err := uc.repo.LockActiveSuperusers(ctx)
+	if err != nil {
+		return fmt.Errorf("count active superusers: %w", err)
+	}
+	if n <= 1 {
+		return errors.ErrLastSuperuser
+	}
 	return nil
 }
 

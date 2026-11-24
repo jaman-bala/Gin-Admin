@@ -2,6 +2,7 @@ package handler
 
 import (
 	"gin_auth_service/internal/application/user"
+	domainUser "gin_auth_service/internal/domain/user"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +16,21 @@ type UserHandler struct {
 
 func NewUserHandler(usecase user.UseCase) *UserHandler {
 	return &UserHandler{usecase: usecase}
+}
+
+// actorFromContext returns the authenticated caller set by AuthMiddleware. It
+// reports false when the middleware did not run, so a mis-wired route fails
+// closed instead of acting as an anonymous or default-privileged user.
+func actorFromContext(c *gin.Context) (user.Actor, bool) {
+	v, exists := c.Get("user")
+	if !exists {
+		return user.Actor{}, false
+	}
+	u, ok := v.(*domainUser.User)
+	if !ok || u == nil {
+		return user.Actor{}, false
+	}
+	return user.Actor{ID: u.ID, Role: u.Role}, true
 }
 
 // GetMe godoc
@@ -174,7 +190,13 @@ func (h *UserHandler) Patch(c *gin.Context) {
 		return
 	}
 
-	u, err := h.usecase.Patch(c.Request.Context(), id, req, nil)
+	actor, ok := actorFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+
+	u, err := h.usecase.Patch(c.Request.Context(), actor, id, req, nil)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -199,7 +221,13 @@ func (h *UserHandler) Create(c *gin.Context) {
 		return
 	}
 
-	u, err := h.usecase.Create(c.Request.Context(), req, nil)
+	actor, ok := actorFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+
+	u, err := h.usecase.Create(c.Request.Context(), actor, req, nil)
 	if err != nil {
 		respondError(c, err)
 		return
@@ -221,7 +249,12 @@ func (h *UserHandler) Delete(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
-	if err := h.usecase.Delete(c.Request.Context(), id); err != nil {
+	actor, ok := actorFromContext(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		return
+	}
+	if err := h.usecase.Delete(c.Request.Context(), actor, id); err != nil {
 		respondError(c, err)
 		return
 	}

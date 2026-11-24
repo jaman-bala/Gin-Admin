@@ -67,6 +67,14 @@ func post(r *gin.Engine, path, body string, headers map[string]string) *httptest
 	return w
 }
 
+func doJSON(r *gin.Engine, method, path, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	return w
+}
+
 func jsonField(t *testing.T, w *httptest.ResponseRecorder, key string) string {
 	t.Helper()
 	var m map[string]any
@@ -269,6 +277,8 @@ func TestRespondError_StatusMapping(t *testing.T) {
 		{appErrors.ErrInvalidCredentials, http.StatusUnauthorized},
 		{appErrors.ErrInvalidToken, http.StatusUnauthorized},
 		{appErrors.ErrAccountBlocked, http.StatusForbidden},
+		{appErrors.ErrForbiddenRole, http.StatusForbidden},
+		{appErrors.ErrLastSuperuser, http.StatusConflict},
 		{appErrors.ErrInvalidUUID, http.StatusBadRequest},
 		{appErrors.ErrInvalidPatchField, http.StatusBadRequest},
 		{fmt.Errorf("ctx: %w", appErrors.ErrUserNotFound), http.StatusNotFound},

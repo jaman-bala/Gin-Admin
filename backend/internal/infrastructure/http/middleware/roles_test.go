@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	domainUser "gin_auth_service/internal/domain/user"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,5 +63,21 @@ func TestRequireRoleLevel_ForbiddenBody(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "AUTH_INSUFFICIENT_PRIVILEGES") {
 		t.Errorf("body = %s, want AUTH_INSUFFICIENT_PRIVILEGES", w.Body.String())
+	}
+}
+
+// The router passes these constants to RequireRoleLevelMiddleware, while the
+// use cases authorize with domain Role.Level(). They must be the same numbers.
+func TestRoleLevelConstantsMatchDomain(t *testing.T) {
+	pairs := []struct{ mw, domain int }{
+		{RoleLevelNone, domainUser.LevelNone},
+		{RoleLevelUser, domainUser.LevelUser},
+		{RoleLevelAdmin, domainUser.LevelAdmin},
+		{RoleLevelSuperuser, domainUser.LevelSuperuser},
+	}
+	for _, p := range pairs {
+		if p.mw != p.domain {
+			t.Errorf("middleware level %d != domain level %d", p.mw, p.domain)
+		}
 	}
 }

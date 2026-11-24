@@ -16,13 +16,15 @@ func respondError(c *gin.Context, err error) {
 	case errors.Is(err, appErrors.ErrUserNotFound):
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, appErrors.ErrConflict),
+		errors.Is(err, appErrors.ErrLastSuperuser),
 		errors.Is(err, appErrors.ErrPhoneAlreadyExists),
 		errors.Is(err, appErrors.ErrStaleWrite):
 		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	case errors.Is(err, appErrors.ErrInvalidCredentials),
 		errors.Is(err, appErrors.ErrInvalidToken):
 		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-	case errors.Is(err, appErrors.ErrAccountBlocked):
+	case errors.Is(err, appErrors.ErrAccountBlocked),
+		errors.Is(err, appErrors.ErrForbiddenRole):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, appErrors.ErrInvalidUUID),
 		errors.Is(err, appErrors.ErrInvalidPatchField):

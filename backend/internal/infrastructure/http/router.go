@@ -81,7 +81,7 @@ func buildDeps(db *sqlx.DB, cfg *config.Config) *routeDeps {
 	auditSvc := auditlog.NewUseCase(auditRepo)
 	auditRecorder := auditlog.NewAsyncRecorder(auditRepo, 4096, 256, time.Second)
 	analyticsSvc := analytics.NewUseCase(analyticsRepo, redisCache)
-	userSvc := user.NewUseCase(userRepo, fileSvc, redisCache)
+	userSvc := user.NewUseCase(userRepo, postgres.NewTxManager(db), fileSvc, redisCache)
 	authSvc := auth.NewUseCase(userRepo, tokenSvc, fileSvc, cfg.JWT.Expiry, cfg.JWT.RefreshExpiry)
 
 	return &routeDeps{

@@ -4,29 +4,21 @@ import (
 	"fmt"
 	"net/http"
 
+	domainUser "gin_auth_service/internal/domain/user"
+
 	"github.com/gin-gonic/gin"
 )
 
-// Role levels mirror domain/user roles. Higher level = more privileges.
+// Role levels come from domain/user so the middleware and the use-case
+// authorization rules can never disagree. Higher level = more privileges.
 const (
-	RoleLevelNone      = 0
-	RoleLevelUser      = 1
-	RoleLevelAdmin     = 2
-	RoleLevelSuperuser = 3
+	RoleLevelNone      = domainUser.LevelNone
+	RoleLevelUser      = domainUser.LevelUser
+	RoleLevelAdmin     = domainUser.LevelAdmin
+	RoleLevelSuperuser = domainUser.LevelSuperuser
 )
 
-func roleLevel(role string) int {
-	switch role {
-	case "superuser":
-		return RoleLevelSuperuser
-	case "admin":
-		return RoleLevelAdmin
-	case "user":
-		return RoleLevelUser
-	default:
-		return RoleLevelNone
-	}
-}
+func roleLevel(role string) int { return domainUser.Role(role).Level() }
 
 // RequireRoleLevelMiddleware rejects requests whose role level is below minLevel.
 func RequireRoleLevelMiddleware(minLevel int) gin.HandlerFunc {

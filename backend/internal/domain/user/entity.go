@@ -16,6 +16,30 @@ const (
 	RoleUser      Role = "user"
 )
 
+// Privilege levels: higher means more privileges. Single source of truth for
+// both the HTTP role middleware and the use-case authorization rules.
+const (
+	LevelNone      = 0
+	LevelUser      = 1
+	LevelAdmin     = 2
+	LevelSuperuser = 3
+)
+
+// Level returns the privilege level of the role; unknown roles get LevelNone
+// so a corrupted or forged role value never grants anything.
+func (r Role) Level() int {
+	switch r {
+	case RoleSuperuser:
+		return LevelSuperuser
+	case RoleAdmin:
+		return LevelAdmin
+	case RoleUser:
+		return LevelUser
+	default:
+		return LevelNone
+	}
+}
+
 type PatchData map[string]any
 
 // User represents a user entity in the system.
