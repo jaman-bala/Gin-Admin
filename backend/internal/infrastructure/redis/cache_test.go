@@ -25,7 +25,9 @@ func newTestCache(t *testing.T) *Cache {
 	if err != nil {
 		t.Fatalf("REDIS_TEST_ADDR %q: %v", addr, err)
 	}
-	c, err := NewCache(&config.Config{Redis: config.RedisConfig{Host: host, Port: port}})
+	// REDIS_TEST_PASSWORD is for a password-protected server such as the one
+	// docker-compose.yml starts.
+	c, err := NewCache(&config.Config{Redis: config.RedisConfig{Host: host, Port: port, Password: os.Getenv("REDIS_TEST_PASSWORD")}})
 	if err != nil {
 		t.Fatalf("NewCache: %v", err)
 	}

@@ -41,8 +41,10 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
+    # Loopback only: the database is for the backend (internal network) and
+    # for local tooling on this machine, never for the network.
     ports:
-      - "5412:5432"
+      - "127.0.0.1:5412:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -59,14 +61,25 @@ services:
     container_name: redis
     restart: always
     image: redis:alpine
-    ports:
-      - "6313:6379"
+    # Redis holds the token blacklist and the login rate-limit counters, so
+    # unauthenticated access lets anyone un-revoke tokens and reset limits.
+    # The official image ignores a REDIS_PASSWORD variable on its own: the
+    # password has to be passed to the server explicitly. It is required (no
+    # empty default) so the stack refuses to start without one.
+    command: ["sh", "-c", 'exec redis-server --requirepass "$$REDIS_PASSWORD"']
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env - Redis must not run without a password}
+      # redis-cli reads its password from this variable (healthcheck below)
+      REDISCLI_AUTH: ${REDIS_PASSWORD}
+    # Loopback only, see the note on db.
+    ports:
+      - "127.0.0.1:6313:6379"
     networks:
       - server_network
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      # PING authenticated through REDISCLI_AUTH: healthy means the server is up
+      # and accepts the configured password (a wrong password -> WRONGPASS).
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -82,8 +95,11 @@ services:
     # the S3 config) and would only add attack surface.
     command: ["server", "-ip=seaweedfs", "-ip.bind=0.0.0.0", "-filer", "-s3", "-s3.port=8333", "-s3.iam=false", "-metricsPort=9324"]
     ports:
-      - "8333:8333" # S3 API
-      - "9333:9333" # master UI
+      # S3 API stays public on purpose: the browser fetches avatars from it via
+      # presigned URLs (SEAWEEDFS_PUBLIC_HOST). Access needs the S3 keys.
+      - "8333:8333"
+      # The master UI has no authentication: loopback only.
+      - "127.0.0.1:9333:9333"
     environment:
       SEAWEEDFS_ACCESS_KEY: ${SEAWEEDFS_ACCESS_KEY}
       SEAWEEDFS_SECRET_KEY: ${SEAWEEDFS_SECRET_KEY}

@@ -56,7 +56,12 @@ docker compose up --build
 | Backend API | http://localhost:8082 |
 | API Docs (Scalar) | http://localhost:8082/docs |
 | SeaweedFS S3 API | http://localhost:8333 |
-| SeaweedFS Master UI | http://localhost:9333 |
+| SeaweedFS Master UI | http://localhost:9333 (this machine only) |
+
+Redis, PostgreSQL and the SeaweedFS master UI listen on `127.0.0.1` only. Redis
+requires `REDIS_PASSWORD` (set in `.env`; `docker compose up` refuses to start
+without it). Generate one with `openssl rand -hex 24`. In a Swarm deployment the
+password is the `redis_password` Docker secret (`deploy/stack.yml`).
 
 Default superuser credentials are set via `ADMIN_DEFAULT_PHONE` and `ADMIN_DEFAULT_PASSWORD` in `.env`.
 
