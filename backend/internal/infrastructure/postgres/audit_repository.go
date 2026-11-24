@@ -10,9 +10,14 @@ import (
 )
 
 // AuditLogDB represents the audit log record in the database.
+//
+// UserID is a pointer because audit_logs.user_id is nullable and has a foreign
+// key to users: the domain's "no user" value (uuid.Nil, used for requests that
+// are not authenticated yet, e.g. login) is stored as NULL, never as an
+// all-zero UUID that no user row can satisfy.
 type AuditLogDB struct {
-	ID        uint      `db:"id"`
-	UserID    uuid.UUID `db:"user_id"`
+	ID        uint       `db:"id"`
+	UserID    *uuid.UUID `db:"user_id"`
 	Action    string    `db:"action"`
 	Entity    string    `db:"entity"`
 	EntityID  uuid.UUID `db:"entity_id"`
@@ -24,9 +29,13 @@ type AuditLogDB struct {
 }
 
 func (m *AuditLogDB) ToEntity() auditlog.AuditLog {
+	userID := uuid.Nil()
+	if m.UserID != nil {
+		userID = *m.UserID
+	}
 	return auditlog.AuditLog{
 		ID:        m.ID,
-		UserID:    m.UserID,
+		UserID:    userID,
 		Action:    m.Action,
 		Entity:    m.Entity,
 		EntityID:  m.EntityID,
@@ -39,9 +48,14 @@ func (m *AuditLogDB) ToEntity() auditlog.AuditLog {
 }
 
 func fromAuditLogEntity(e *auditlog.AuditLog) *AuditLogDB {
+	var userID *uuid.UUID
+	if e.UserID != uuid.Nil() {
+		id := e.UserID
+		userID = &id
+	}
 	return &AuditLogDB{
 		ID:        e.ID,
-		UserID:    e.UserID,
+		UserID:    userID,
 		Action:    e.Action,
 		Entity:    e.Entity,
 		EntityID:  e.EntityID,

@@ -62,7 +62,17 @@ func (r *AsyncRecorder) run() {
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		if err := r.repo.CreateBatch(ctx, pending); err != nil {
-			slog.Error("audit batch insert failed", "error", err, "count", len(pending))
+			slog.Error("audit batch insert failed, retrying entries one by one", "error", err, "count", len(pending))
+			// A multi-row INSERT is all-or-nothing, so one rejected row
+			// (constraint or encoding violation) would discard every valid
+			// entry that happened to share its batch. Retry individually so
+			// only the offending entry is lost. Bounded by ctx.
+			for i := range pending {
+				if err := r.repo.Create(ctx, &pending[i]); err != nil {
+					slog.Error("audit entry dropped", "error", err,
+						"entity", pending[i].Entity, "action", pending[i].Action)
+				}
+			}
 		}
 		cancel()
 		pending = pending[:0]

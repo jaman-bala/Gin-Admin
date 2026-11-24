@@ -6,19 +6,41 @@ import (
 	domainAudit "gin_auth_service/internal/domain/auditlog"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"uuid"
 )
 
+const (
+	// maxUserAgentRunes matches audit_logs.user_agent VARCHAR(255), which
+	// PostgreSQL counts in characters, not bytes.
+	maxUserAgentRunes = 255
+	// maxAuditDataRunes bounds the free-text description (path + request id).
+	maxAuditDataRunes = 1024
+)
+
+// sanitizeText makes client-controlled text safe to store in PostgreSQL and
+// bounds its size: invalid UTF-8 and NUL bytes are rejected by the database,
+// and an over-long value fails the whole multi-row INSERT. Truncation is by
+// characters so a multibyte rune is never cut in half.
+func sanitizeText(s string, maxRunes int) string {
+	s = strings.ToValidUTF8(s, "\uFFFD")
+	s = strings.ReplaceAll(s, "\x00", "")
+	if utf8.RuneCountInString(s) > maxRunes {
+		s = string([]rune(s)[:maxRunes])
+	}
+	return s
+}
+
 // AuditMiddleware records user actions for auditing purposes. Entries are
 // enqueued into an async recorder, so the request path never waits on the DB.
 func AuditMiddleware(recorder auditlog.Recorder) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		path := c.Request.URL.Path
+		path := sanitizeText(c.Request.URL.Path, maxAuditDataRunes)
 		method := c.Request.Method
 		clientIP := c.ClientIP()
-		userAgent := c.GetHeader("User-Agent")
+		userAgent := sanitizeText(c.GetHeader("User-Agent"), maxUserAgentRunes)
 
 		c.Next()
 
@@ -74,7 +96,7 @@ func AuditMiddleware(recorder auditlog.Recorder) gin.HandlerFunc {
 			EntityID:  entityID,
 			ClientIP:  clientIP,
 			UserAgent: userAgent,
-			Data:      logData,
+			Data:      sanitizeText(logData, maxAuditDataRunes),
 			Status:    status,
 			CreatedAt: time.Now(),
 		}
