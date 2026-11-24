@@ -1,27 +1,36 @@
+version: "2"
 run:
-  timeout: 5m
   modules-download-mode: readonly
-
 linters:
   enable:
-    - govet
-    - errcheck
-    - staticcheck
-    - ineffassign
-    - misspell
     - gocyclo
+    - misspell
     - revive
-
-linters-settings:
-  gocyclo:
-    min-complexity: 15
-
-  revive:
+  settings:
+    gocyclo:
+      min-complexity: 15
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+  exclusions:
+    generated: lax
     rules:
-      - name: exported
-        disabled: true
-
+      # Table-driven and integration tests are long by nature.
+      - path: _test\.go
+        linters:
+          - gocyclo
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 issues:
-  exclude-use-default: false
   max-issues-per-linter: 0
   max-same-issues: 0
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

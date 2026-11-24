@@ -81,7 +81,7 @@ func TestStorageRoundTrip(t *testing.T) {
 				t.Fatalf("GET presigned URL: %v", err)
 			}
 			got, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode != http.StatusOK || string(got) != want {
 				t.Fatalf("presigned GET = %d %q; want 200 %q", resp.StatusCode, got, want)
 			}
@@ -96,7 +96,7 @@ func TestStorageRoundTrip(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GET after delete: %v", err)
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode != http.StatusNotFound {
 				t.Fatalf("GET after delete = %d; want 404", resp.StatusCode)
 			}
@@ -112,7 +112,7 @@ func TestStorageRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET tampered URL: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("tampered presigned URL = %d; want 403", resp.StatusCode)
 	}

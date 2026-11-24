@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"gin_auth_service/config"
@@ -58,7 +59,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	// 4. Setup goose
 	if err := goose.SetDialect("postgres"); err != nil {
@@ -66,7 +67,7 @@ func main() {
 	}
 
 	// 5. Execute command
-	if err := goose.Run(command, db.DB, *dir, args[1:]...); err != nil {
+	if err := goose.RunContext(context.Background(), command, db.DB, *dir, args[1:]...); err != nil {
 		log.Fatalf("goose run: %v", err)
 	}
 }

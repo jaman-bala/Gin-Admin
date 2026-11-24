@@ -57,7 +57,7 @@ func (uc *usecase) ensureBucket(ctx context.Context) error {
 }
 
 func (uc *usecase) UploadFile(ctx context.Context, input *FileUpload, folder string) (string, error) {
-	defer input.File.Close()
+	defer func() { _ = input.File.Close() }()
 
 	if err := uc.ensureBucket(ctx); err != nil {
 		return "", err

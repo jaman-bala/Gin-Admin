@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -54,7 +55,10 @@ func LoginRateLimitMiddleware(limiter RateLimiter) gin.HandlerFunc {
 		c.Next()
 
 		if c.Writer.Status() == http.StatusOK {
-			limiter.Reset(ctx, key)
+			if err := limiter.Reset(ctx, key); err != nil {
+				// Not fatal: the counter simply expires with its window.
+				slog.Warn("rate limit reset failed", "error", err)
+			}
 		}
 	}
 }
